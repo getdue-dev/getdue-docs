@@ -58,8 +58,8 @@ graph LR
 
 | Endpoint | Checks | Used by |
 |---|---|---|
-| `GET /v1/health` | process alive | Container liveness probe |
-| `GET /v1/health/ready` | Postgres reachable, Redis reachable, migrations applied, outbox drainable | Load balancer / readiness probe |
+| `GET /health` | process alive | Container liveness probe (unversioned — matches K8s YAML in [01 §7](./01-architecture.md#7-deployment-architecture-kubernetes)) |
+| `GET /health/ready` | Postgres reachable, Redis reachable, migrations applied, outbox drainable | Load balancer / readiness probe (unversioned) |
 
 Implemented with **ASP.NET Core HealthChecks** (`AddNpgSql`, `AddRedis`, custom outbox check).
 

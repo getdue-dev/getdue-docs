@@ -7,7 +7,8 @@ This is the heart of Phase 0. All entities are **user-authored** (no external sy
 
 ```mermaid
 erDiagram
-    HOUSEHOLD ||--o{ USER : "has members"
+    HOUSEHOLD ||--o{ HOUSEHOLD_MEMBER : "has members"
+    USER      ||--o{ HOUSEHOLD_MEMBER : "belongs to"
     HOUSEHOLD ||--o{ BANK_ACCOUNT : owns
     HOUSEHOLD ||--o{ LOAN_DEBT : owes
     HOUSEHOLD ||--o{ PROPERTY : owns
@@ -46,6 +47,13 @@ erDiagram
         string name
         string base_currency
         timestamptz created_at
+    }
+    HOUSEHOLD_MEMBER {
+        uuid id PK
+        uuid household_id FK
+        uuid user_id FK
+        string role
+        timestamptz joined_at
     }
     BANK_ACCOUNT {
         uuid id PK
@@ -191,6 +199,7 @@ erDiagram
         decimal rate
         string source
         timestamptz as_of
+        timestamptz created_at
     }
 ```
 
@@ -198,8 +207,8 @@ erDiagram
 
 | Aggregate | Root | Key invariants |
 |---|---|---|
-| **Household** | `Household` | Has ≥1 member; one `base_currency` (reporting currency); cannot be deleted while it owns entities |
-| **ExchangeRate** | `ExchangeRate` | `rate > 0`; **append-only** — corrections insert a new row, **latest `created_at` wins** for new conversions; `base→base = 1.0` is implicit |
+| **Household** | `Household` (contains `HouseholdMember`) | Has ≥1 member via `HouseholdMember(user_id, household_id, role)`; exactly one `OWNER`; one `base_currency` (reporting currency); cannot be deleted while it owns entities; `UNIQUE(user_id, household_id)` |
+| **ExchangeRate** | `ExchangeRate` | `rate > 0`; **append-only** — corrections insert a new row with a fresh `created_at`; for new conversions, the **latest `created_at`** for the `(household_id, base_currency, quote_currency, as_of)` tuple wins (index: `(household_id, base_currency, quote_currency, as_of, created_at DESC)`); `base→base = 1.0` is implicit |
 | **BankAccount** | `BankAccount` | `current_balance` change ⇒ new snapshot; currency immutable after creation |
 | **LoanDebt** | `LoanDebt` (contains `PaymentSchedule`, `LoanPayment`) | `0 ≤ outstanding ≤ original`; `end_date > start_date`; APR ≥ 0; `outstanding = 0 ⟺ status = PAID_OFF` |
 | **Property** | `Property` | `current_value ≥ 0`; revaluation ⇒ snapshot |
@@ -207,14 +216,14 @@ erDiagram
 | **PaymentSchedule** | `PaymentSchedule` (contains `ScheduledInstallment`) | Belongs to exactly one loan; `Σ principal_due = original principal`; installments ordered by `seq_no`/`due_date`; **immutable once issued** — re-amortization creates a new `version` |
 | **LoanPayment** | `LoanPayment` | `amount = principal_component + interest_component`; in the loan's currency; `principal_component ≤ outstanding` at payment time; reduces outstanding; raises `LoanBalanceChanged` |
 | **Portfolio** | `Portfolio` (contains `Holding`) | `quantity ≥ 0`; market value = `quantity × last_price` |
-| **FinancialGoal** | `FinancialGoal` (contains `GoalContribution`) | `current_amount = Σ contributions`; `0 ≤ progress ≤ 100%`; status transitions valid |
+| **FinancialGoal** | `FinancialGoal` (contains `GoalContribution`) | `current_amount = Σ contributions` (in goal currency); `progress_pct = min(100, current_amount / target_amount × 100)`; `required_monthly = max(0, (target_amount − current_amount) / months_until(target_date))` (in goal currency; `months_until` rounds up to the next full month, ≥ 1); `on_track ⟺ projected_completion_date ≤ target_date` where `projected_completion_date` extrapolates from the last 90 days of contribution rate; status transitions valid |
 
 ## 3. Value objects
 
 | Value object | Shape | Rules |
 |---|---|---|
 | **Money** | `{ amount: decimal, currency: string }` | `decimal`/`numeric(19,4)`; currency = ISO-4217; **arithmetic only within the same currency** — cross-currency requires an explicit `Convert(rate)` |
-| **ExchangeRate** | `{ base, quote, rate: decimal, asOf }` | `rate > 0`, `numeric(19,8)`; `Convert(Money m → base) = m.amount × rate` |
+| **ExchangeRate** | `{ base, quote, rate: decimal, asOf }` | `rate > 0`, `numeric(19,8)`; **convention: `rate = quote_per_base`** (e.g. `{base:EUR, quote:USD, rate:1.087}` ⇒ *1 EUR = 1.087 USD*). Conversions: `Convert(m_quote → base) = m.amount / rate`; `Convert(m_base → quote) = m.amount × rate`. |
 | **CurrencyCode** | `string` (ISO-4217) | Validated 3-letter code; uppercased |
 | **Percentage** | `decimal` (0–100) | APRs, progress |
 | **DateRange** | `{ start, end }` | `end > start` |
@@ -231,7 +240,7 @@ LoanType      = PERSONAL | AUTO | STUDENT | CREDIT_LINE | OTHER
 LoanStatus    = ACTIVE | PAID_OFF | CLOSED
 PropertyType  = APARTMENT | HOUSE | LAND | COMMERCIAL | OTHER
 ScheduleSource    = IMPORTED | GENERATED        (user-uploaded plan, or amortization computed by us)
-InstallmentStatus = SCHEDULED | DUE | PAID | PARTIALLY_PAID | MISSED
+InstallmentStatus = SCHEDULED | DUE | PAID | PARTIALLY_PAID | MISSED | CANCELLED  (CANCELLED only on FULL_PAYOFF — §6.2/§6.4)
 PaymentType   = SCHEDULED | PARTIAL_PREPAYMENT | FULL_PAYOFF | EXTRA
               (SCHEDULED = a planned installment · PARTIAL_PREPAYMENT = early partial · FULL_PAYOFF = early full payoff · EXTRA = ad-hoc extra)
 GoalType      = EMERGENCY_FUND | SAVINGS | PURCHASE | DEBT_PAYOFF | RETIREMENT | CUSTOM
@@ -240,6 +249,7 @@ PriceSource   = MANUAL | SEED            (no live market feed in Phase 0)
 ValuationSrc  = MANUAL | SEED
 FxRateSource  = MANUAL | SEED            (no live FX feed in Phase 0)
 UserStatus    = PENDING | ACTIVE | SUSPENDED
+HouseholdRole = OWNER | MEMBER          (server-set on join/invite; never client-supplied)
 ```
 
 ## 5. Multi-currency model
@@ -380,7 +390,7 @@ FROM latest;
 | Event | Raised when | Consumed by |
 |---|---|---|
 | `BankAccountBalanceChanged` | balance edited | NetWorth projector |
-| `PropertyRevalued` | property value edited | NetWorth projector |
+| `PropertyValued` | property value edited (initial valuation or revaluation) | NetWorth projector |
 | `LoanScheduleImported` | payment schedule imported/generated (new version) | monitoring (upcoming-due reminders) |
 | `LoanPaymentRecorded` | a payment is recorded (scheduled/partial/full/extra) | NetWorth projector, Goals (debt-payoff), monitoring |
 | `LoanBalanceChanged` | outstanding changes (payment, prepayment, payoff) | NetWorth projector, Goals (debt-payoff) |
@@ -414,4 +424,8 @@ All events flow through the **transactional outbox** (see [01 §5](./01-architec
 
 - **Tenant = Household.** Every business row carries `household_id`.
 - Every query is filtered by the caller's household via a global EF Core query filter — **no cross-household reads**.
-- A `User` may belong to one household in Phase 0 (multi-household membership is Phase 1).
+- Membership is held by `HOUSEHOLD_MEMBER(user_id, household_id, role)` (`OWNER` | `MEMBER`); the JWT carries
+  `householdId` + `role` claims resolved from this table at login, and **server-side** role enforcement (09 SEC-AUTHZ-03)
+  reads them per request.
+- A `User` may belong to **one** household in Phase 0 (`UNIQUE(user_id)` on `HOUSEHOLD_MEMBER`); multi-household
+  membership is Phase 1.

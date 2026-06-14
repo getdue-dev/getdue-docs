@@ -54,7 +54,6 @@
 | 10 | [Client Dashboard & Analytics](./10-dashboard-analytics.md) | Money analytics, net worth, allocation, debt & goal KPIs |
 | 11 | [Versioning System](./11-versioning.md) | Cloud-wide versioning: API, services, contracts, events, DB, infra |
 | 12 | [Testing Standard](./12-testing-standard.md) | **Mandatory 100% line+branch coverage + mutation testing, enforced in CI** |
-| 13 | [Bootstrap Tasks](./13-tasks.md) | M0 punch-list: GitHub org setup, what's done, what's blocked on Team + GHAS upgrade |
 
 ## Tech stack at a glance
 

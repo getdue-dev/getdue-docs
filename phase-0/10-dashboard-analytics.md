@@ -76,15 +76,32 @@ GET /v1/dashboard?displayCurrency=USD
   "baseCurrency": "EUR",
   "displayCurrency": "USD",
   "netWorth": {
-    "value": "339,000.00",
-    "deltaMoM": { "amount": "4,200.00", "pct": 1.25 },
-    "sparkline": ["330100","332400","335000","339000"]
+    "value": { "amount": "339000.00", "currency": "USD" },
+    "deltaMoM": { "amount": { "amount": "4200.00", "currency": "USD" }, "pct": 1.25 },
+    "sparkline": { "currency": "USD", "points": ["330100.00", "332400.00", "335000.00", "339000.00"] }
   },
-  "assets":      { "total": "541,000.00", "byClass": { "cash": "25,470.00", "realEstate": "456,000.00", "stocks": "59,530.00" } },
-  "liabilities": { "total": "202,000.00", "byClass": { "loans": "13,640.00", "mortgages": "188,360.00" }, "weightedAvgApr": 0.0412 },
+  "assets": {
+    "total": { "amount": "541000.00", "currency": "USD" },
+    "byClass": {
+      "cash":       { "amount": "25470.00",  "currency": "USD" },
+      "realEstate": { "amount": "456000.00", "currency": "USD" },
+      "stocks":     { "amount": "59530.00",  "currency": "USD" }
+    }
+  },
+  "liabilities": {
+    "total": { "amount": "202000.00", "currency": "USD" },
+    "byClass": {
+      "loans":     { "amount": "13640.00",  "currency": "USD" },
+      "mortgages": { "amount": "188360.00", "currency": "USD" }
+    },
+    "weightedAvgApr": 0.0412
+  },
   "allocation":  { "byClass": { "cash": 4.7, "realEstate": 84.3, "stocks": 11.0 } },
   "currencyExposure": { "EUR": 78.0, "USD": 18.0, "GBP": 4.0 },
-  "debt": { "payoffPct": 0.61, "nextPaymentDue": { "date": "2026-07-01", "amount": "450.00" } },
+  "debt": {
+    "payoffPct": 0.61,
+    "nextPaymentDue": { "date": "2026-07-01", "amount": { "amount": "450.00", "currency": "EUR" } }
+  },
   "goals": { "active": 3, "onTrack": 2, "atRisk": 1, "achieved": 1, "aggregateProgressPct": 47.5 },
   "kpis": { "debtToAsset": 0.373, "leverage": 1.60, "liquidityRatio": 0.126 },
   "unconverted": []

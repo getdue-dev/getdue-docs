@@ -375,7 +375,7 @@ spec:
 
 Enforced in CI (per service):
 
-- **No outbound finance calls:** assert no `HttpClient`/SDK references to bank/brokerage namespaces.
+- **No outbound finance / market / FX calls:** every `HttpClient` registered in `Program.cs` MUST set a `BaseAddress` whose host is on the Phase-0 egress allowlist (cluster-internal DNS, Postgres, Redis, Key Vault, RabbitMQ, OTel Collector, Cloudflare API for cert-manager). The NetArchTest rule asserts both (a) no SDK/namespace references to bank/brokerage/market-data vendors **and** (b) no `HttpClient` `BaseAddress` resolving to an external host outside the allowlist. This blocks generic public FX/market endpoints (e.g. `api.exchangerate.host`, `query1.finance.yahoo.com`) that would otherwise bypass the SDK-namespace check, enforcing the Phase-0 invariant "no live FX/market feed" ([00 §3](./00-overview.md#3-non-goals-phase-0)).
 - **Dependency direction:** `Domain` references nothing; `Application` references only `Domain`;
   `Infrastructure`/`Api` may not be referenced by inner layers (**NetArchTest** / **ArchUnitNET**).
 - **No cross-service DB access:** a service may reference only its own `Infrastructure` DB context.

@@ -30,6 +30,8 @@ POST   /v1/auth/login
 POST   /v1/auth/refresh
 POST   /v1/auth/logout
 GET    /v1/me
+GET    /v1/me/export                       # GDPR access/portability: full JSON dump of the caller's household ([09 SEC-DATA-07](./09-security-standard.md#10-data-protection))
+DELETE /v1/me                              # GDPR erasure: soft-delete + erasure SLA per 09 SEC-DATA-07
 
 GET    /v1/household
 PATCH  /v1/household                      # name, base currency
@@ -92,9 +94,9 @@ PATCH  /v1/goals/{id}
 DELETE /v1/goals/{id}
 POST   /v1/goals/{id}/contributions
 
-# Exchange rates (multi-currency; user-sourced in Phase 0)
-GET    /v1/fx-rates                         # rates known to this household
-PUT    /v1/fx-rates                         # upsert a rate {base, quote, rate, asOf}
+# Exchange rates (multi-currency; user-sourced in Phase 0; append-only — corrections insert a new row)
+GET    /v1/fx-rates                         # rates known to this household (latest per (base, quote, asOf))
+POST   /v1/fx-rates                         # append a rate row {base, quote, rate, asOf} — corrections add a new row
 GET    /v1/fx-rates/missing                 # currencies in use that lack a rate to base
 
 # Aggregation (multi-currency: ?displayCurrency overrides the base for presentation)
@@ -111,8 +113,8 @@ GET    /v1/analytics/movements?from&to       # what changed net worth between tw
 GET    /v1/analytics/kpis                     # debt-to-asset, liquidity, leverage, MoM change
 
 # Monitoring (read-only, user-facing health)
-GET    /v1/health                          # liveness (ops)
-GET    /v1/health/ready                     # readiness (ops)
+GET    /health                             # liveness (ops, unversioned; matches K8s probes in 01 §7)
+GET    /health/ready                       # readiness (ops, unversioned)
 GET    /v1/insights                        # financial-health signals for this household
 ```
 
@@ -209,17 +211,19 @@ GET /v1/networth/history?from=2025-01-01&to=2026-06-13&grain=month&displayCurren
 }
 ```
 
-### Upsert an exchange rate
+### Append an exchange rate
 ```http
-PUT /v1/fx-rates
+POST /v1/fx-rates
 Idempotency-Key: 7c1a...
 
-{ "base": "EUR", "quote": "USD", "rate": "1.08695652", "asOf": "2026-06-13", "source": "MANUAL" }
+{ "base": "EUR", "quote": "USD", "rate": "1.08695652", "asOf": "2026-06-13" }
 ```
-The household reads "1 EUR = 1.08695652 USD"; the inverse (`USD→EUR`) is derived. Rates are **append-only** —
-editing or correcting a rate inserts a new row (latest `created_at` wins for new conversions); existing valuation
-snapshots retain the `fx_rate_to_base` they were written with, preserving the audit trail. `ExchangeRateChanged`
-invalidates the latest-rate cache so subsequent writes pick up the correction.
+The household reads "1 EUR = 1.08695652 USD" (`rate = quote_per_base`, see [03 §3](./03-domain-model.md#3-value-objects)); the inverse
+(`USD→EUR = 1 / rate`) is derived. Rates are **append-only** — editing or correcting a rate inserts a new row with a
+fresh server-stamped `createdAt`; the latest `createdAt` for the same `(base, quote, asOf)` wins for new conversions.
+Existing valuation snapshots retain the `fx_rate_to_base` they were written with, preserving the audit trail.
+`ExchangeRateChanged` invalidates the latest-rate cache so subsequent writes pick up the correction. `source` and
+`createdAt` are **server-set** — request bodies that include them are rejected (`422`).
 
 ### Create a financial goal
 ```http
@@ -241,7 +245,11 @@ POST /v1/goals
   "progressPct": 0,
   "status": "ACTIVE",
   "targetDate": "2027-12-31",
-  "projection": { "onTrack": false, "requiredMonthly": "2702.70" }
+  "projection": {
+    "onTrack": false,
+    "requiredMonthly": { "amount": "2702.70", "currency": "EUR" },
+    "projectedCompletionDate": "2028-08-31"
+  }
 }
 ```
 
@@ -286,7 +294,7 @@ Idempotency-Key: 9c2e...
   "paymentId": "018f...",
   "paymentType": "PARTIAL_PREPAYMENT",
   "balanceAfter": { "amount": "24398.50", "currency": "EUR" },
-  "schedule": { "version": 2, "remainingInstallments": 54, "scheduledPayment": { "amount": "450.00", "currency": "EUR" } }
+  "schedule": { "version": 2, "remainingInstallments": 64, "scheduledPayment": { "amount": "450.00", "currency": "EUR" } }
 }
 ```
 `reamortize` ∈ `REDUCE_TERM` (keep installment, finish sooner — default) | `REDUCE_INSTALLMENT` (keep end date,
@@ -349,7 +357,7 @@ original — so idempotency is enforced in **shared storage**, not pod memory.
 
 - **Required** on every state-changing request that records a new fact or appends a snapshot: all `POST` creates and
   the snapshot/event-producing actions (`POST .../payments`, `POST .../contributions`, `PUT /accounts/{id}/balance`,
-  `PUT /properties/{id}/valuation`, `PUT /fx-rates`). `GET` and `DELETE` are naturally idempotent and don't require
+  `PUT /properties/{id}/valuation`, `POST /fx-rates`). `GET` and `DELETE` are naturally idempotent and don't require
   a key.
 - The **client generates** the key — a UUID (v4/v7) — and sends it in the `Idempotency-Key` header. The client
   **reuses the same key for all retries** of the same logical operation.
@@ -401,7 +409,14 @@ sequenceDiagram
 POST /v1/loans/018f.../payments
 Idempotency-Key: 9b2e6c1a-0e2f-4f6a-bb3d-7c9a1e4d8a55
 
-{ "amount": "350.00", "currency": "EUR", "paidOn": "2026-06-13" }
+{
+  "paymentType": "SCHEDULED",
+  "installmentId": "018f-aaaa-...",
+  "amount":             { "amount": "350.00", "currency": "EUR" },
+  "principalComponent": { "amount": "320.00", "currency": "EUR" },
+  "interestComponent":  { "amount":  "30.00", "currency": "EUR" },
+  "paidOn": "2026-06-13"
+}
 ```
 
 A duplicate key with a changed body:
