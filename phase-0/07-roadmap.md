@@ -68,7 +68,7 @@ M3 (once the contract is stable) and **M7** as the closing gate.
 ## 6. First two weeks (concrete starting point)
 
 1. Create the **shared repos first** ([08](./08-repositories.md)): `getdue-contracts`, `getdue-buildingblocks`, `getdue-platform`, `getdue-deploy`, and the org `.github` (reusable workflows + security rulesets per [09](./09-security-standard.md)).
-2. Apply org-wide **branch protection & security rulesets** (signed commits, 2-review, required CI gates, push protection) so every repo is governed from day one.
+2. Apply org-wide **branch protection & security rulesets** (signed commits, PR-from-feature-branch, required CI gates, push protection) so every repo is governed from day one. The `CODEOWNERS` approval and two-person prod-deploy rules are checked in as deferred controls per [09 §0.1](./09-security-standard.md#01-solo-phase-scope), activating when a second engineer joins.
 3. Stand up the `getdue-platform` Docker Compose mesh: Postgres, Redis, **RabbitMQ**, OTel Collector, Grafana stack.
 4. Build **one reference service repo** (`getdue-identity`): 4-project shape, own DB, JWT validation, tenant filter, health checks, first trace — the template every other service repo copies.
 5. Add the gateway repo (`getdue-gateway`) + each service's `deploy/k8s` (Deployment replicas: 2, HPA max 3, probes, PDB) on **Kubernetes (AKS)**; verify a rolling, zero-downtime deploy.

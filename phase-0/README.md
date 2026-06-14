@@ -5,6 +5,12 @@
 > self-contained: the user manually records their financial reality (accounts, debts, property, mortgages,
 > stocks, goals) and the platform aggregates, tracks, and monitors it.
 
+> **Ownership model (Phase 0).** Solo-maintained. All repos live in the **private** GitHub org `get-due-dev`.
+> Branch protection, PR-from-feature-branch, signed commits, and blocking CI gates stay on; human-review
+> requirements (CODEOWNERS approval, two-person sign-off, separation of duties on prod deploys) are documented
+> as the bank-grade target and **reinstated when a second engineer joins**. See [08 §0](./08-repositories.md#0-ownership-model-phase-0)
+> and [09 §0.1](./09-security-standard.md#01-solo-phase-scope).
+
 ## Product surface (3 clients, 1 backend)
 
 | Surface | Description | Phase 0 status |

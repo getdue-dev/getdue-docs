@@ -61,7 +61,8 @@ architecture tests → security gates (§09) → publish image
 
 100% applies to **code that carries behavior**. The following are **excluded** — but only via an explicit,
 version-controlled allow-list (e.g. `[ExcludeFromCodeCoverage]` with a reason, or coverage-config globs), each
-reviewed by CODEOWNERS:
+reviewed in PR (solo phase: maintainer self-review; CODEOWNER approval reinstated when the team grows —
+[09 §0.1](./09-security-standard.md#01-solo-phase-scope)):
 
 | Excluded | Why | How |
 |---|---|---|

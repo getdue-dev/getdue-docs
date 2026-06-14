@@ -73,7 +73,7 @@ Even pre-regulation, design for **GDPR-style** rights from day one:
 | Stage | Control |
 |---|---|
 | Commit | Secret scanning (gitleaks), pre-commit lint |
-| PR | SAST (CodeQL), dependency review, architecture tests, required review |
+| PR | SAST (CodeQL), dependency review, architecture tests; all CI gates required (CODEOWNER review reinstated when the team grows — [09 §0.1](./09-security-standard.md#01-solo-phase-scope)) |
 | Build | SBOM generation, image signing (cosign) |
 | Deploy | IaC reviewed (Terraform plan), least-privilege managed identities |
 | Runtime | WAF at Front Door, anomaly alerts, audit log |

@@ -4,6 +4,27 @@ GetDue uses a **polyrepo** model: **one GitHub repository per microservice**, pl
 that distribute contracts and common libraries as **versioned packages**. This gives each service independent
 delivery, isolated access control, and a blast radius of one — properties a bank-grade platform requires.
 
+## 0. Ownership model (Phase 0)
+
+Phase 0 is **solo-maintained** in a **private** GitHub organization, `get-due-dev`. All repos listed below are
+private. The bank-grade governance posture is the long-term target; the table makes explicit which controls run
+now and which are documented but **deferred until a second engineer joins**.
+
+| Control | Solo phase (now) | When team grows |
+|---|---|---|
+| Default-branch protection | **on** — PR-only from feature branches, no direct pushes, no force-push, linear history | unchanged |
+| Required status checks (CI gates) | **on, blocking** — no merge on red | unchanged |
+| Signed commits | **required** | unchanged |
+| Secret scanning + push protection | **on** | unchanged |
+| Dependabot + CodeQL | **on** | unchanged |
+| Production env manual approval | **on** — same maintainer approves, gate + audit record preserved | second approver required (separation of duties) |
+| PR review by `CODEOWNERS` | **deferred** — self-merge allowed once CI is green | **required** — restores `CODEOWNERS` approval rule |
+| Two-person sign-off on production deploy | **deferred** | **required** ([09 SEC-GOV-04](./09-security-standard.md#1-governance-ownership--change-control)) |
+| Access | maintainer is org admin; CI/CD uses OIDC short-lived tokens (no long-lived secrets) | least-privilege per-team write; admin still restricted |
+
+`CODEOWNERS` files MAY still be checked in to mark security-sensitive paths, so the approval rule activates
+cleanly when the team grows. `SECURITY.md` is required from day one.
+
 ## 1. Repository map
 
 ```mermaid
@@ -45,7 +66,10 @@ graph TB
 
 ## 2. Repository inventory
 
-| Repo | Type | Owner team | Publishes |
+All repos are **private** in the `get-due-dev` org. Phase 0 has a single maintainer; the "future owner" column
+records the team that will own the repo once the team grows (see [§0](#0-ownership-model-phase-0)).
+
+| Repo | Type | Future owner | Publishes |
 |---|---|---|---|
 | `getdue-identity` … `getdue-insights` (8) | Service | service team | container image |
 | `getdue-gateway` | Edge | platform | container image |
@@ -120,16 +144,24 @@ bump image tag in getdue-deploy (GitOps) → Argo CD rolls out (2–3 pods)
 
 ## 7. Branch protection & repo security rules (all repos)
 
-Enforced via **org-level GitHub rulesets** (so no repo can opt out):
+Enforced via **org-level GitHub rulesets** (so no repo can opt out). Read alongside the solo-phase matrix in
+[§0](#0-ownership-model-phase-0): the rules below run **now**; the rows marked *deferred* there are the only
+controls relaxed while the project is solo-maintained.
 
-- **Protected default branch:** no direct pushes; **PR required** with **1 approval from `CODEOWNERS`**.
-- **Required status checks:** all CI gates in §6 must pass; **no merge on red**.
-- **Signed commits required** (GPG/Sigstore); linear history; no force-push to default.
-- **`CODEOWNERS`** mandatory; security-sensitive paths require the security team's review.
+- **Repos are private** in the `get-due-dev` org; visibility cannot be flipped to public via repo settings (org policy).
+- **Protected default branch:** no direct pushes; **PR required** from a feature branch; no force-push to default;
+  linear history.
+- **Required status checks:** all CI gates in §6 must pass; **no merge on red**. Solo phase: **self-merge allowed
+  once CI is green**; the CODEOWNERS approval rule activates when the team grows.
+- **Signed commits required** (GPG/Sigstore) on protected branches.
+- **`CODEOWNERS`** MAY be checked in to mark security-sensitive paths so the approval rule activates cleanly later;
+  **`SECURITY.md`** is required from day one.
 - **Secret scanning + push protection ON**; **Dependabot alerts + security updates ON**; **CodeQL** required.
-- **Least-privilege access:** teams get write only to their service repo; admin is restricted; service accounts use
-  short-lived tokens (OIDC to the cloud, no long-lived secrets).
-- **Environments:** `staging` auto-deploy; **`production` requires manual approval** (separation of duties).
+- **Least-privilege access:** the maintainer is org admin; CI/CD authenticates via **OIDC short-lived tokens** to
+  the cloud (no long-lived secrets in CI). Per-team write scopes activate when the team grows.
+- **Environments:** `staging` auto-deploys; **`production` requires manual approval**. Solo phase: the same
+  maintainer approves — the gate and audit record stay, two-person sign-off activates when the team grows
+  ([09 SEC-GOV-04](./09-security-standard.md#1-governance-ownership--change-control)).
 - **Tags/releases immutable**; artifacts signed and provenance-attested (SLSA).
 
 Full control catalogue: **[09 · Security Standard](./09-security-standard.md)**.

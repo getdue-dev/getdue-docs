@@ -136,7 +136,7 @@ copy-pasted. Full governance, ownership, and publishing rules in **[08 · Reposi
 | **`getdue-buildingblocks`** | Shared C# lib: Money VO, outbox, OTel, auth handlers, resilience | NuGet |
 | **`getdue-platform`** | Terraform, Helm base charts, Kubernetes base manifests, policies | tagged release |
 | **`getdue-deploy`** | GitOps (Argo CD app-of-apps) referencing each service's image tag | — |
-| **`.github`** | Org-level **reusable workflows**, security policies, CODEOWNERS defaults | — |
+| **`.github`** | Org-level **reusable workflows**, security policies (CODEOWNERS templates checked in as deferred controls — [08 §0](./08-repositories.md#0-ownership-model-phase-0)) | — |
 
 Each **service repo** keeps the identical internal shape:
 
@@ -148,14 +148,16 @@ getdue-<service>/
 │  └─ k8s/        # Deployment (replicas 2, HPA max 3), Service, HPA, PDB, probes
 ├─ .github/workflows/   # build → test → archtest → scan → sign → publish image → deploy
 ├─ Dockerfile          # multi-stage, distroless/chiseled
-├─ CODEOWNERS
+├─ CODEOWNERS          # checked in; approval rule reactivates when the team grows (08 §0)
 └─ SECURITY.md         # references the org security standard (doc 09)
 ```
 
-> **Why polyrepo here:** independent deploy/rollback per service, blast-radius isolation, per-repo branch protection
-> and least-privilege access, and clean separation of duties — all properties a bank-grade platform wants. The cost
-> (cross-repo coordination, version bumps) is mitigated by the `contracts`/`buildingblocks` packages and org-level
-> reusable workflows. A shared local dev experience is provided by the `getdue-platform` Docker Compose mesh.
+> **Why polyrepo here:** independent deploy/rollback per service, blast-radius isolation, and per-repo branch
+> protection — all properties a bank-grade platform wants. Per-team least-privilege access and separation of
+> duties activate when the team grows ([08 §0](./08-repositories.md#0-ownership-model-phase-0)); the polyrepo
+> shape is chosen now so those controls drop in without reshaping the org. The cost (cross-repo coordination,
+> version bumps) is mitigated by the `contracts`/`buildingblocks` packages and org-level reusable workflows. A
+> shared local dev experience is provided by the `getdue-platform` Docker Compose mesh.
 
 ## 8. Version pinning (Phase 0 targets)
 

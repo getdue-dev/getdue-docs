@@ -7,6 +7,20 @@
 > **Conformance language (RFC 2119):** **MUST** = hard requirement, release-blocking. **SHOULD** = strongly
 > expected; deviations require a documented, time-boxed risk acceptance signed by the security owner. **MAY** = optional.
 
+## 0.1 Solo-phase scope
+
+Phase 0 is solo-maintained in the private `get-due-dev` org. All bank-grade controls below stay on **except** the
+two that structurally require a second person — these are documented and **reinstated when a second engineer joins**:
+
+| Rule | Solo-phase state | Reactivation trigger |
+|---|---|---|
+| **SEC-GOV-02** — `CODEOWNERS` approval on PR | **deferred**; PR-from-feature-branch + all CI gates green is the merge requirement; self-merge allowed | second engineer joins |
+| **SEC-GOV-04** — separation of duties on production deploy | **deferred**; production env still requires manual approval (same maintainer clicks, gate + audit record preserved) | second engineer joins |
+
+Everything else — branch protection, signed commits, blocking CI gates, secret/SAST/SCA/IaC/container scanning,
+image signing, vault-only secrets, immutable audit log, MFA, OIDC-to-cloud — runs from day one. The cross-reference
+matrix is in [08 §0](./08-repositories.md#0-ownership-model-phase-0).
+
 ## 0. Guiding principles
 
 1. **Zero trust** — no implicit trust by network location; authenticate and authorize every call, including
@@ -14,7 +28,9 @@
 2. **Least privilege** — every identity (human, service, pipeline) gets the minimum access, time-boxed.
 3. **Defense in depth** — gateway auth does not excuse a service from re-validating.
 4. **Secure by default** — deny-by-default network, encryption on by default, secrets never in code.
-5. **Separation of duties** — no single person can author, approve, and deploy to production unreviewed.
+5. **Separation of duties** — no single person can author, approve, and deploy to production unreviewed. *(Deferred in
+   the solo phase per [§0.1](#01-solo-phase-scope); compensated by mandatory CI gates, signed commits, immutable
+   audit log, and the manual production-environment approval gate.)*
 6. **Assume breach** — log everything security-relevant, immutably; design for fast detection and containment.
 7. **Money never moves** (Phase 0) — and the controls that will guard money movement are built now.
 
@@ -22,14 +38,21 @@
 
 ## 1. Governance, ownership & change control
 
-- **SEC-GOV-01 (MUST)** Every repo has a `CODEOWNERS` and a `SECURITY.md` referencing this standard.
-- **SEC-GOV-02 (MUST)** Default branch protected: PR-only, **1 review from CODEOWNERS**, all CI gates green,
-  **no merge on red**, no force-push, linear history.
+- **SEC-GOV-01 (MUST)** Every repo has a `SECURITY.md` referencing this standard. `CODEOWNERS` MAY be checked in
+  to mark security-sensitive paths so the approval rule activates cleanly once the team grows.
+- **SEC-GOV-02 (MUST)** Default branch protected: PR-only from a feature branch, all CI gates green, **no merge
+  on red**, no force-push, linear history. **CODEOWNERS approval is deferred** in the solo phase
+  ([§0.1](#01-solo-phase-scope)); self-merge is allowed once CI is green and reactivated as a hard rule when a
+  second engineer joins.
 - **SEC-GOV-03 (MUST)** **Signed commits** (GPG/Sigstore) required on protected branches.
-- **SEC-GOV-04 (MUST)** **Separation of duties:** the person who approves a production deploy MUST NOT be its sole author.
+- **SEC-GOV-04 (MUST → DEFERRED in solo phase)** **Separation of duties:** the person who approves a production
+  deploy MUST NOT be its sole author. Deferred per [§0.1](#01-solo-phase-scope); SEC-GOV-05 (manual prod approval)
+  remains in force as the compensating gate. Reactivates on the first day a second engineer can approve.
 - **SEC-GOV-05 (MUST)** Production deploys require **manual approval** in a protected GitHub `production` environment;
   staging may auto-deploy.
-- **SEC-GOV-06 (MUST)** Every production change is traceable to a PR, an approver, and a ticket (auditable change record).
+- **SEC-GOV-06 (MUST)** Every production change is traceable to a PR (with passing CI), a signed merge commit, and
+  a ticket reference in the commit/PR body (auditable change record). The approver field is the maintainer in the
+  solo phase and a distinct second engineer once SEC-GOV-04 reactivates.
 - **SEC-GOV-07 (SHOULD)** Quarterly access review of all repo, cloud, and database grants.
 
 ## 2. Identity & access management (IAM)
@@ -184,7 +207,7 @@ Every service pipeline MUST run these gates, and **MUST fail the build** on thre
 
 A service **MUST NOT** reach production until **all** are true:
 
-- [ ] Branch protection, CODEOWNERS, signed commits, 1-CODEOWNER-review rule active (§1)
+- [ ] Branch protection, signed commits, all CI gates required (§1). **Solo phase:** PR-from-feature-branch + green CI is the merge rule; `CODEOWNERS` approval and two-person prod-deploy sign-off are checklist items the day the team grows ([§0.1](#01-solo-phase-scope)).
 - [ ] Own workload identity + own least-privilege DB credentials (§2, §6)
 - [ ] Local JWT validation + tenant `householdId` filter with passing arch test (§3, §4)
 - [ ] mTLS + default-deny NetworkPolicy + declared dependencies only (§5)
