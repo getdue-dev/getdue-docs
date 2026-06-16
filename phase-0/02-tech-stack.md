@@ -24,7 +24,7 @@ Each microservice is the same stack — a stateless ASP.NET Core service running
 | Logging | **Serilog** → OTLP | Structured logs, correlation/trace IDs |
 | Telemetry | **OpenTelemetry .NET SDK** | Distributed traces across service hops |
 | Resilience | **Polly** (retry, circuit breaker, timeout) | Hardened sync calls between services |
-| Testing | **xUnit**, **FluentAssertions**, **Testcontainers**, **NetArchTest**; **Coverlet** + **Stryker.NET** | Unit + integration + architecture tests; **100% coverage + mutation gate** ([12](./12-testing-standard.md)) |
+| Testing | **xUnit**, **FluentAssertions**, **Testcontainers**, **NetArchTest**; **Coverlet** + **Stryker.NET** | Unit + integration + architecture tests; **100% coverage + mutation gate** ([engineering/03](../engineering/03-testing-standard.md)) |
 | API docs | **OpenAPI** + **Scalar** UI | Live contract per service, aggregated at the gateway |
 
 > **Statelessness rule:** services hold no in-pod session/cache that must survive a restart. JWTs are validated
@@ -56,7 +56,7 @@ Each microservice is the same stack — a stateless ASP.NET Core service running
 | Forms | **React Hook Form** + **Zod** | Validation mirrored from API rules |
 | Auth | HTTP-only cookie (refresh) + in-memory access token | XSS-resistant session handling |
 | State | Server state via Query; minimal client state (Zustand if needed) | Avoid over-engineering |
-| Testing | **Vitest** (+coverage), **Testing Library**, **Playwright** | Unit + e2e; **100% coverage gate** ([12](./12-testing-standard.md)) |
+| Testing | **Vitest** (+coverage), **Testing Library**, **Playwright** | Unit + e2e; **100% coverage gate** ([engineering/03](../engineering/03-testing-standard.md)) |
 
 ## 4. iPhone app
 
@@ -115,28 +115,10 @@ Full design in [05 · Monitoring](./05-monitoring.md).
 
 ## 7. Repository strategy (multi-repo / polyrepo)
 
-**Each microservice owns its own GitHub repository**, with independent CI/CD, versioning, branch protection, and
-release cadence. Cross-cutting concerns live in dedicated **shared repos** consumed as **versioned packages**, never
-copy-pasted. Full governance, ownership, and publishing rules in **[08 · Repositories & Contracts](./08-repositories.md)**.
-
-| GitHub repo | Contains | Published artifact |
-|---|---|---|
-| `getdue-identity` | Identity service (4-project Clean Arch) | container image |
-| `getdue-accounts` | Accounts service | container image |
-| `getdue-debts` | Debts & Mortgages service | container image |
-| `getdue-realestate` | Real Estate service | container image |
-| `getdue-stocks` | Stocks Portfolio service | container image |
-| `getdue-goals` | Goals service | container image |
-| `getdue-networth` | Net Worth / Aggregation service | container image |
-| `getdue-insights` | Insights service | container image |
-| `getdue-gateway` | YARP API gateway / BFF | container image |
-| `getdue-web` | Next.js + TypeScript web cabinet | container image |
-| `getdue-mobile` | SwiftUI iPhone app | App Store build |
-| **`getdue-contracts`** | **Event/message schemas, OpenAPI specs, shared DTOs** | NuGet + npm + Swift package |
-| **`getdue-buildingblocks`** | Shared C# lib: Money VO, outbox, OTel, auth handlers, resilience | NuGet |
-| **`getdue-platform`** | Terraform, Helm base charts, Kubernetes base manifests, policies | tagged release |
-| **`getdue-deploy`** | GitOps (Argo CD app-of-apps) referencing each service's image tag | — |
-| **`.github`** | Org-level **reusable workflows**, security policies (CODEOWNERS templates checked in as deferred controls — [08 §0](./08-repositories.md#0-ownership-model-phase-0)) | — |
+**Each microservice owns its own repository**, with independent CI/CD, versioning, and a protected `main`. Cross-cutting
+concerns live in dedicated **shared repos** consumed as **versioned packages**, never copy-pasted. The full repo map,
+inventory, contracts/buildingblocks, CI/CD pipeline, and branch-protection rules are in the engineering handbook:
+**[engineering/01 · Repositories & Contracts](../engineering/01-repositories.md)**.
 
 Each **service repo** keeps the identical internal shape:
 
@@ -148,16 +130,13 @@ getdue-<service>/
 │  └─ k8s/        # Deployment (replicas 2, HPA max 3), Service, HPA, PDB, probes
 ├─ .github/workflows/   # build → test → archtest → scan → sign → publish image → deploy
 ├─ Dockerfile          # multi-stage, distroless/chiseled
-├─ CODEOWNERS          # checked in; approval rule reactivates when the team grows (08 §0)
-└─ SECURITY.md         # references the org security standard (doc 09)
+└─ SECURITY.md         # references the security standard (phase-0/09) + secure SDLC (engineering/04)
 ```
 
 > **Why polyrepo here:** independent deploy/rollback per service, blast-radius isolation, and per-repo branch
-> protection — all properties a bank-grade platform wants. Per-team least-privilege access and separation of
-> duties activate when the team grows ([08 §0](./08-repositories.md#0-ownership-model-phase-0)); the polyrepo
-> shape is chosen now so those controls drop in without reshaping the org. The cost (cross-repo coordination,
-> version bumps) is mitigated by the `contracts`/`buildingblocks` packages and org-level reusable workflows. A
-> shared local dev experience is provided by the `getdue-platform` Docker Compose mesh.
+> protection. The cost (cross-repo coordination, version bumps) is mitigated by the `contracts`/`buildingblocks`
+> packages and shared reusable workflows. A shared local dev experience is provided by the `getdue-platform` Docker
+> Compose mesh.
 
 ## 8. Version pinning (Phase 0 targets)
 

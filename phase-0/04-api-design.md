@@ -19,7 +19,7 @@ for web, `swift-openapi-generator` for the SwiftUI app).
 | Pagination | `?page=1&pageSize=20` → `{ items, page, pageSize, total }` |
 | Errors | RFC 9457 Problem Details (`application/problem+json`) |
 | Idempotency | `Idempotency-Key` header **required** on all creating/state-changing POSTs — see [§5](#5-idempotency-keys) |
-| Versioning | URL-path major `/v1`; additive changes stay in-place — full rules in [11 · Versioning](./11-versioning.md#2-api-versioning) |
+| Versioning | URL-path major `/v1`; additive changes stay in-place — full rules in [11 · Versioning](../engineering/02-versioning.md#2-api-versioning) |
 | Correlation | `traceparent` (W3C) propagated; echoed `X-Request-Id` |
 
 ## 2. Resource map
@@ -30,7 +30,7 @@ POST   /v1/auth/login
 POST   /v1/auth/refresh
 POST   /v1/auth/logout
 GET    /v1/me
-GET    /v1/me/export                       # GDPR access/portability: full JSON dump of the caller's household ([09 SEC-DATA-07](./09-security-standard.md#10-data-protection))
+GET    /v1/me/export                       # GDPR access/portability: full JSON dump of the caller's household ([09 SEC-DATA-07](./09-security-standard.md#7-data-protection--privacy))
 DELETE /v1/me                              # GDPR erasure: soft-delete + erasure SLA per 09 SEC-DATA-07
 
 GET    /v1/household
@@ -438,7 +438,7 @@ Two layers, both required:
   at-least-once delivery can't double-apply an event ([01 §6](./01-architecture.md#6-statelessness--scaling-model),
   [09 SEC-RES-03](./09-security-standard.md#11-resilience--abuse-prevention)).
 
-This is centralized as middleware in `getdue-buildingblocks` ([08](./08-repositories.md)) so every service behaves
+This is centralized as middleware in `getdue-buildingblocks` ([08](../engineering/01-repositories.md)) so every service behaves
 identically.
 
 ## 6. Security headers & limits

@@ -19,7 +19,7 @@ real bank's data, minus the regulated payment/KYC obligations."
 | **Service-to-service traffic** | Spoofing / lateral movement inside the cluster | **mTLS** (service mesh or cluster network policy), JWT propagated and re-validated at each service, default-deny `NetworkPolicy` |
 | **Message broker** | Tampered/forged events | Broker auth (per-service creds), TLS to RabbitMQ, signed event envelopes, idempotent consumers |
 | Telemetry | PII/money leakage | Hashed identifiers, no amounts in logs (see [05 §9](./05-monitoring.md#9-data-privacy-in-telemetry)) |
-| Supply chain | Compromised dependency | Pinned versions, SBOM, Dependabot, signed images |
+| Supply chain | Compromised dependency | Pinned versions, SBOM, automated dependency updates, signed images |
 
 ## 2. Authentication
 
@@ -70,13 +70,13 @@ Even pre-regulation, design for **GDPR-style** rights from day one:
 
 ## 7. Secure SDLC
 
-| Stage | Control |
-|---|---|
-| Commit | Secret scanning (gitleaks), pre-commit lint |
-| PR | SAST (CodeQL), dependency review, architecture tests; all CI gates required (CODEOWNER review reinstated when the team grows — [09 §0.1](./09-security-standard.md#01-solo-phase-scope)) |
-| Build | SBOM generation, image signing (cosign) |
-| Deploy | IaC reviewed (Terraform plan), least-privilege managed identities |
-| Runtime | WAF at Front Door, anomaly alerts, audit log |
+The build-and-ship security pipeline — secret scanning, SAST, dependency/SCA review, IaC and container scanning,
+SBOM, image signing, DAST — is an **engineering-process** concern and is specified in
+**[engineering/04 · Secure SDLC](../engineering/04-secure-sdlc.md)**. The repo workflow itself is plain GitHub Flow on
+private repos + a protected `main` ([engineering/01 §7](../engineering/01-repositories.md#7-branch-protection-all-repos)).
+
+At **runtime** the app keeps least-privilege managed identities, a WAF at the edge, anomaly alerts, and an audit log
+(§3–§5, [05 · Monitoring](./05-monitoring.md)).
 
 ## 8. Compliance posture (Phase 0)
 

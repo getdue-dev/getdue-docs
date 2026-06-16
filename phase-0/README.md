@@ -5,11 +5,10 @@
 > self-contained: the user manually records their financial reality (accounts, debts, property, mortgages,
 > stocks, goals) and the platform aggregates, tracks, and monitors it.
 
-> **Ownership model (Phase 0).** Solo-maintained. All repos live in the **private** GitHub org `get-due-dev`.
-> Branch protection, PR-from-feature-branch, signed commits, and blocking CI gates stay on; human-review
-> requirements (CODEOWNERS approval, two-person sign-off, separation of duties on prod deploys) are documented
-> as the bank-grade target and **reinstated when a second engineer joins**. See [08 §0](./08-repositories.md#0-ownership-model-phase-0)
-> and [09 §0.1](./09-security-standard.md#01-solo-phase-scope).
+> **Ownership model (Phase 0).** Solo-maintained. All repos live in the **private** GitHub org `get-due-dev`, and
+> `main` is protected — plain **GitHub Flow** (feature branch → PR → green CI → merge; no direct pushes, no
+> force-push). Engineering process, tooling, and the CI security pipeline live in the
+> **[engineering handbook](../engineering/README.md)**, separate from these product docs.
 
 ## Product surface (3 clients, 1 backend)
 
@@ -49,11 +48,11 @@
 | 05 | [Monitoring System](./05-monitoring.md) | Observability, financial-health monitoring, alerting |
 | 06 | [Security & Compliance](./06-security.md) | AuthN/Z, data protection, posture for Phase 0 (design narrative) |
 | 07 | [Roadmap & Phasing](./07-roadmap.md) | Phase 0 milestones and what unlocks Phase 1 |
-| 08 | [Repositories & Contracts](./08-repositories.md) | Multi-repo strategy, shared contracts/libraries, branch rules |
-| 09 | [Security Standard](./09-security-standard.md) | **Bank-grade, enforceable security rules every service must meet** |
+| 09 | [Security Standard](./09-security-standard.md) | **Enforceable application/runtime security rules every service must meet** |
 | 10 | [Client Dashboard & Analytics](./10-dashboard-analytics.md) | Money analytics, net worth, allocation, debt & goal KPIs |
-| 11 | [Versioning System](./11-versioning.md) | Cloud-wide versioning: API, services, contracts, events, DB, infra |
-| 12 | [Testing Standard](./12-testing-standard.md) | **Mandatory 100% line+branch coverage + mutation testing, enforced in CI** |
+
+> **Engineering process** (repositories, CI/CD, versioning, testing, secure SDLC) lives separately in the
+> **[engineering handbook](../engineering/README.md)** — it is not tied to Phase 0.
 
 ## Tech stack at a glance
 

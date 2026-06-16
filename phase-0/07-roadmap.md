@@ -27,9 +27,9 @@ M3 (once the contract is stable) and **M7** as the closing gate.
 - [ ] **Client dashboard** live on web + mobile: net worth, allocation, debt, goals, currency exposure, KPIs from a single `/dashboard` read model ([10](./10-dashboard-analytics.md)).
 - [ ] Operational dashboards + financial-health insights live; alerting verified.
 - [ ] **Every service passes the [§13 security acceptance gate](./09-security-standard.md#13-per-service-security-acceptance-gate-release-checklist)** — no service ships to prod otherwise.
-- [ ] Multi-repo governance live: per-service repos + shared `contracts`/`buildingblocks`, org branch-protection rulesets ([08](./08-repositories.md)).
+- [ ] Multi-repo setup live: per-service repos + shared `contracts`/`buildingblocks`, **private repos + protected `main`** ([engineering/01](../engineering/01-repositories.md)).
 - [ ] CI runs unit + integration + **architecture/guardrail** tests + full security gate (SAST/SCA/secret/IaC/container scan, image signing) on every PR.
-- [ ] **100% line + branch coverage** + mutation testing enforced as a blocking CI gate on every repo ([12 · Testing](./12-testing-standard.md)).
+- [ ] **100% line + branch coverage** + mutation testing enforced as a blocking CI gate on every repo ([engineering/03 · Testing](../engineering/03-testing-standard.md)).
 - [ ] Backup + restore drill executed and documented.
 - [ ] OpenAPI published; both clients generate types from it.
 
@@ -67,10 +67,10 @@ M3 (once the contract is stable) and **M7** as the closing gate.
 
 ## 6. First two weeks (concrete starting point)
 
-1. Create the **shared repos first** ([08](./08-repositories.md)): `getdue-contracts`, `getdue-buildingblocks`, `getdue-platform`, `getdue-deploy`, and the org `.github` (reusable workflows + security rulesets per [09](./09-security-standard.md)).
-2. Apply org-wide **branch protection & security rulesets** (signed commits, PR-from-feature-branch, required CI gates, push protection) so every repo is governed from day one. The `CODEOWNERS` approval and two-person prod-deploy rules are checked in as deferred controls per [09 §0.1](./09-security-standard.md#01-solo-phase-scope), activating when a second engineer joins.
+1. Create the **shared repos first** ([engineering/01](../engineering/01-repositories.md)): `getdue-contracts`, `getdue-buildingblocks`, `getdue-platform`, `getdue-deploy`, and the org `.github` (reusable CI workflows).
+2. Make every repo **private** and **protect `main`** — PR-from-feature-branch, required CI gates, no force-push (plain **GitHub Flow**, [engineering/01 §7](../engineering/01-repositories.md#7-branch-protection-all-repos)).
 3. Stand up the `getdue-platform` Docker Compose mesh: Postgres, Redis, **RabbitMQ**, OTel Collector, Grafana stack.
 4. Build **one reference service repo** (`getdue-identity`): 4-project shape, own DB, JWT validation, tenant filter, health checks, first trace — the template every other service repo copies.
 5. Add the gateway repo (`getdue-gateway`) + each service's `deploy/k8s` (Deployment replicas: 2, HPA max 3, probes, PDB) on **Kubernetes (AKS)**; verify a rolling, zero-downtime deploy.
-6. Wire the **reusable** GitHub Actions pipeline (build → test → archtest → SAST/secret/SCA/IaC/container scan → SBOM + sign → push image → GitOps deploy), consumed by every service repo.
+6. Wire the **reusable** CI pipeline (build → test → archtest → SAST/secret/SCA/IaC/container scan → SBOM + sign → push image → GitOps deploy), consumed by every service repo ([engineering/04 · Secure SDLC](../engineering/04-secure-sdlc.md)).
 7. Prove the event path: emit a domain event from Identity through the outbox → RabbitMQ → a stub consumer, traced end-to-end. Every subsequent service repo reuses this skeleton.
