@@ -1,7 +1,7 @@
 # GetDue — Cloud Home Bank · Documentation
 
 A personal "home bank in the cloud": mobile app (iPhone), a personal web cabinet, and a monitoring system,
-backed by C#/.NET 10 stateless microservices (2–3 pods each) on Kubernetes.
+backed by C#/.NET 10 stateless microservices (≥2 pods each, autoscaling) on Kubernetes.
 
 ## Phase 0 — Foundation Slice
 
@@ -21,6 +21,7 @@ aggregates, tracks, and monitors it.
 | [05 · Monitoring System](./phase-0/05-monitoring.md) | Ops + financial-health observability, alerting, SLOs |
 | [06 · Security & Compliance](./phase-0/06-security.md) | AuthN/Z, data protection, Phase 0 compliance posture |
 | [07 · Roadmap & Phasing](./phase-0/07-roadmap.md) | Milestones, Definition of Done, what unlocks Phase 1 |
+| [08 · Cost & FinOps](./phase-0/08-cost-finops.md) | Per-environment cost model, cost-by-scale, dev cost-saving mode |
 | [09 · Security Standard](./phase-0/09-security-standard.md) | Enforceable application/runtime security rules for every service |
 | [10 · Client Dashboard & Analytics](./phase-0/10-dashboard-analytics.md) | Money analytics home screen: net worth, allocation, debt, goals, KPIs |
 

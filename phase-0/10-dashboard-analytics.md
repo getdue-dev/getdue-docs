@@ -73,6 +73,8 @@ GET /v1/dashboard?displayCurrency=USD
 ```json
 {
   "asOf": "2026-06-13T10:00:00Z",
+  "projectionVersion": 4821,
+  "stale": false,
   "baseCurrency": "EUR",
   "displayCurrency": "USD",
   "netWorth": {
@@ -112,12 +114,18 @@ GET /v1/dashboard?displayCurrency=USD
   for drill-down ([04 · API Design](./04-api-design.md#2-resource-map)).
 - `unconverted` lists any entity whose currency lacks an FX rate to base, so the UI can prompt "add a rate" rather
   than silently mis-totaling ([03 §5](./03-domain-model.md#5-multi-currency-model)).
+- **Eventual-consistency contract.** The dashboard read model is **eventually consistent**, so every payload carries
+  `asOf` (snapshot time of the projection) and `projectionVersion` (monotonic version the read reflects). After an
+  edit, the client compares against the version it expects; until the projection catches up the UI shows an
+  **"updating…"** state (`stale: true`) rather than a silently stale number — see [§5](#5-performance--freshness).
+- **Window definitions.** `netWorth.sparkline.points` is the **last 12 points** (most-recent-last); `deltaMoM` uses a
+  **30-day** comparison window (matching the **MoM change** KPI in [§2](#kpi-definitions-phase-0)).
 
 ## 4. Frontend (web + mobile)
 
 | Concern | Choice |
 |---|---|
-| Charts | **Recharts / visx** (web), **Swift Charts** (iOS) |
+| Charts | **Recharts** (web), **Swift Charts** (iOS) |
 | Data | **TanStack Query** caches `/dashboard`; widgets refetch on focus |
 | Types | generated from the gateway OpenAPI (`@getdue/contracts`) — no hand-written shapes |
 | Layout | responsive card grid; the same widget set on web and a condensed stack on iPhone |
@@ -132,6 +140,12 @@ the Net Worth service like any other read ([09 · Security Standard §4](./09-se
 - Updated **near-real-time** as events arrive (net-worth recompute lag SLO < 5 s, [05 §7](./05-monitoring.md#7-slos-phase-0-targets)).
 - Cacheable per household in **Redis** with event-driven invalidation; stays correct because every contributing
   service emits an event on change.
+- **Eventually consistent, never silently stale.** Because the projection lags edits (recompute lag SLO < 5 s), the
+  payload exposes `asOf` + `projectionVersion` and the UI renders an **"updating…"** state until the read model
+  reflects the user's last change — no stale number is shown as if it were live. An **idempotent reconcile/rebuild
+  job** can rebuild the projections from valuation snapshots, and **projection-drift monitoring** alerts if the read
+  model diverges from the source snapshots ([05 §5](./05-monitoring.md#5-financial-health-monitoring-the-product-facing-half),
+  [05 §10](./05-monitoring.md#10-disaster-recovery-rtorpo)).
 
 ## 6. Explicitly deferred
 

@@ -9,8 +9,8 @@
 
 ## 0.1 Solo-phase scope
 
-Phase 0 is solo-maintained in the private `get-due-dev` org. Repository governance is intentionally minimal —
-**private repos + a protected `main`** (GitHub Flow); see
+Phase 0 is solo-maintained in the `getdue-dev` org. Repository governance is intentionally minimal —
+**public repos + a protected `main`** (GitHub Flow); see
 [engineering/01 §7](../engineering/01-repositories.md#7-branch-protection-all-repos). The application controls in this
 standard run from day one. Change-control governance and the CI security pipeline are an engineering-process concern
 and live in **[engineering/04 · Secure SDLC](../engineering/04-secure-sdlc.md)**.
@@ -32,7 +32,7 @@ and live in **[engineering/04 · Secure SDLC](../engineering/04-secure-sdlc.md)*
 Change-control governance — branch protection, PR-from-feature-branch, auditable change records, access reviews — is
 an **engineering-process** concern and lives in
 **[engineering/04 · Secure SDLC §1](../engineering/04-secure-sdlc.md#1-governance-ownership--change-control)**. The
-only application-level requirement here: every repo is **private** and ships a `SECURITY.md` referencing this standard.
+only application-level requirement here: every repo is **public** and ships a `SECURITY.md` referencing this standard.
 
 ## 2. Identity & access management (IAM)
 
@@ -52,11 +52,16 @@ only application-level requirement here: every repo is **private** and ships a `
 - **SEC-AUTH-02 (MUST)** **Every service validates the JWT locally** (signature, `iss`, `aud`, `exp`, scopes) — the
   gateway's check does not exempt it (defense in depth, zero trust).
 - **SEC-AUTH-03 (MUST)** Passwords hashed with **Argon2id** (or PBKDF2 ≥ OWASP iteration guidance); breached-password
-  check at set-time; account lockout + exponential backoff.
-- **SEC-AUTH-04 (MUST)** **MFA (TOTP/WebAuthn)** available to all users; **on by default for account owners**.
+  check at set-time; account lockout + exponential backoff. Argon2id parameters MUST meet the OWASP minimum of
+  **m=19456 KiB (19 MiB), t=2, p=1**, tuned upward as hardware allows.
+- **SEC-AUTH-04 (MUST)** **MFA (TOTP/WebAuthn)** available to all users; **on by default for ALL users (OWNER and MEMBER)**.
 - **SEC-AUTH-05 (MUST)** JWT signing keys are asymmetric (RS/ES), stored in the vault/HSM, and **rotated** with a
   published JWKS; tokens are validated against current keys.
 - **SEC-AUTH-06 (MUST)** Mobile stores refresh token in the **Keychain**; web uses **HttpOnly, Secure, SameSite** cookies.
+- **SEC-AUTH-07 (MUST)** **Logout & token revocation:** on logout the **refresh token is revoked immediately** (server-side
+  in Redis). The **stateless access JWT (≤15 min) remains valid until its `exp`** after logout — this is the accepted
+  trade-off for stateless validation. For sensitive/critical operations, a **Redis `jti` deny-list** provides
+  **immediate revocation** of individual access tokens.
 
 ## 4. Authorization & tenant isolation
 
@@ -69,22 +74,29 @@ only application-level requirement here: every repo is **private** and ships a `
 
 ## 5. Service-to-service & network security (zero trust)
 
-- **SEC-NET-01 (MUST)** **mTLS** for all service-to-service traffic (service mesh or equivalent); plaintext intra-cluster
-  traffic is prohibited.
+- **SEC-NET-01 (MUST)** **mTLS** for all service-to-service traffic, provided by an **automatic-mTLS layer** — Phase 0
+  uses **Linkerd** (Istio or Cilium mTLS are accepted equivalents). A bare `NetworkPolicy` is **not** sufficient (it
+  segments but neither encrypts nor authenticates); plaintext intra-cluster traffic is prohibited.
 - **SEC-NET-02 (MUST)** **Default-deny `NetworkPolicy`**; a service may reach only the dependencies it declares
   (its DB, Redis, broker, named peers).
 - **SEC-NET-03 (MUST)** Public ingress only through **Cloudflare/edge → ingress-nginx → gateway**, behind a **WAF +
-  TLS 1.2+ (prefer 1.3)**; HSTS enabled; no service is directly internet-exposed. TLS terminates at the ingress and,
+  TLS 1.2+ (prefer 1.3)**; HSTS enabled; no service is directly internet-exposed. A **WAF at the edge is MANDATORY
+  regardless of provider** (Cloudflare / Azure Front Door / CloudFront) — it is **not optional**. TLS terminates at the ingress and,
   if a CDN/edge is used, the **edge→origin hop MUST also be encrypted with origin-cert validation** (Cloudflare
   **Full (strict)**, never "Flexible"). The origin LB MUST be **locked to the edge** (allow-list edge IP ranges or
   authenticated origin pull) so the WAF cannot be bypassed. See [01 §7.1](./01-architecture.md#71-edge-ingress--https).
 - **SEC-NET-04 (MUST)** **Per-user + per-IP rate limiting** and request-size caps at the gateway/ingress;
-  abuse/anomaly alerting. When fronted by a CDN/edge, the **real client IP** MUST be propagated (e.g. `CF-Connecting-IP`)
-  so rate limits and audit logs key on the true client, not the edge.
+  abuse/anomaly alerting. Concrete limits: **edge per-IP 20 rps**; **authenticated per-user 10 rps sustained / burst 40 /
+  600 rpm**; auth endpoints are stricter — **login 5/min**, **password-reset & email-verify-resend 3/min per account+IP**.
+  Throttled requests return **`429` with `Retry-After`**. When fronted by a CDN/edge, the **real client IP** MUST be
+  propagated (e.g. `CF-Connecting-IP`) so rate limits and audit logs key on the true client, not the edge.
 - **SEC-NET-05 (MUST)** **Broker security:** RabbitMQ requires TLS + per-service credentials; events carry signed
   envelopes; consumers are **idempotent** (dedup by event id) and validate `schemaVersion`.
-- **SEC-NET-06 (SHOULD)** Egress is default-deny; the Phase 0 guardrail (no outbound financial-institution calls) is
-  enforced both by network policy and by architecture tests.
+- **SEC-NET-06 (SHOULD)** Egress is default-deny. The Phase 0 guardrail blocks only **financial-institution, market-data,
+  and FX vendors** (the "no live feed / no money movement" invariant). **Operational dependencies are explicitly
+  allow-listed**: the transactional-email provider, push (APNs/FCM), and the breached-password API (HIBP, k-anonymity) —
+  these are required by auth/notification features (SEC-AUTH-03/04) and are **not** financial feeds. The allow-list is
+  enforced by both `NetworkPolicy` and the architecture test ([01 §9](./01-architecture.md#9-architecture-tests)).
 
 ## 6. Secrets & key management
 
@@ -95,6 +107,8 @@ only application-level requirement here: every repo is **private** and ships a `
   Secrets/CSI driver, never plain K8s `Secret` in git.
 - **SEC-SEC-03 (MUST)** Encryption keys are vault/**HSM-backed**; key rotation policy defined; access audited.
 - **SEC-SEC-04 (MUST)** All secrets/keys have an owner and a **rotation schedule**; credentials auto-rotated where supported.
+  Cadence: **app secrets ≤90d**; **JWT signing keys ≤180d with JWKS overlap**; **DB credentials ≤30d auto-rotated**;
+  **TLS certs auto-renewed via cert-manager**.
 
 ## 7. Data protection & privacy
 
@@ -111,6 +125,8 @@ only application-level requirement here: every repo is **private** and ships a `
 - **SEC-DATA-05 (MUST)** **No `RESTRICTED`/`CONFIDENTIAL` data in logs, metrics, traces, or error messages**; identifiers
   are hashed; **no monetary amounts in telemetry** (see [05 §9](./05-monitoring.md#9-data-privacy-in-telemetry)).
 - **SEC-DATA-06 (MUST)** **Encrypted, tested backups**; PITR on Postgres; documented restore drills; defined retention.
+  Disaster-recovery targets: **RTO 4h, RPO ≤15 min** (Postgres PITR), single region for Phase 0 with multi-AZ/region as
+  a Target/Phase 1 goal; see the [05 · Monitoring](./05-monitoring.md) DR/backup guidance.
 - **SEC-DATA-07 (MUST)** **GDPR rights** built in: data export (`/me/export`) and erasure with a defined SLA; data
   residency pinned to one region.
 - **SEC-DATA-08 (SHOULD)** Non-production environments use **synthetic/anonymized** data only; production data MUST NOT
@@ -132,12 +148,19 @@ The application requirements those gates enforce are specified here: container i
   role/permission changes, data export, deletion, admin/privileged actions, secret access.
 - **SEC-LOG-02 (MUST)** Logs are **structured**, carry `traceId` + **hashed** subject ids, and **exclude** secrets,
   tokens, PII, and amounts.
-- **SEC-LOG-03 (MUST)** Centralized aggregation (Loki/SIEM) with **tamper-evident retention** ≥ 1 year for audit events.
+- **SEC-LOG-03 (MUST)** **Audit-class logs** (the SEC-LOG-01 security events) MUST be written to **WORM storage
+  (object-lock blob/S3) or a SIEM** with **tamper-evident retention ≥ 1 year** — **not Loki**. Loki carries ops logs
+  only (SEC-LOG-02); the audit class is segregated to immutable storage.
 - **SEC-LOG-04 (MUST)** **Alerting** on: auth-failure spikes, privilege changes, anomalous access patterns, WAF blocks,
   a service dropping below 2 healthy pods, broker/consumer lag (see [05 §6](./05-monitoring.md#6-alerting-alertmanager--grafana-alerts)).
 - **SEC-LOG-05 (SHOULD)** Time synchronization (NTP) across all nodes for forensically reliable timestamps.
 
 ## 10. Vulnerability & patch management (remediation SLAs)
+
+> **Two operating modes.** The SLA table below is the **Target operating model (team)** — full on-call/IR/SLA. In the
+> **Solo-phase (now)**, remediation is **best-effort** with a **single responder** and **asynchronous alerts
+> (email/Slack, no 24/7 paging)**; the windows below are aspirational targets, not paged SLAs, and remediation runs in
+> realistic windows around a solo maintainer's availability.
 
 | Severity (CVSS) | Remediate within | Action if exceeded |
 |---|---|---|
@@ -152,16 +175,22 @@ The application requirements those gates enforce are specified here: container i
 
 ## 11. Resilience & abuse prevention
 
-- **SEC-RES-01 (MUST)** **2–3 stateless pods per service**, liveness/readiness probes, `PodDisruptionBudget` (minAvailable 1),
-  rolling zero-downtime deploys.
+- **SEC-RES-01 (MUST)** **≥2 stateless replicas for HA**, liveness/readiness probes, `PodDisruptionBudget` (minAvailable 1),
+  rolling zero-downtime deploys, **HPA autoscaling on load**. The autoscale ceiling is a documented Phase-0 **cost** cap
+  (see [08 · Cost & FinOps](./08-cost-finops.md)), not a security requirement.
 - **SEC-RES-02 (MUST)** Resilience policies (Polly: timeout, retry-with-jitter, circuit breaker) on all sync inter-service calls.
 - **SEC-RES-03 (MUST)** **Idempotency keys required** on all creating/state-changing endpoints, enforced via
-  shared storage (so retries across the 2–3 pods are safe) with exactly-once side effects and a **7d key TTL**
+  shared storage (so retries across replicas are safe) with exactly-once side effects and a **7d key TTL**
   (mobile background retries routinely exceed 24h); **event consumers dedupe by event id**. Full mechanism:
   [04 · API Design §5](./04-api-design.md#5-idempotency-keys).
 - **SEC-RES-04 (SHOULD)** Bot/abuse protection at the edge; graceful degradation under load.
 
 ## 12. Incident response
+
+> **Two operating modes.** SEC-IR-01..04 below describe the **Target operating model (team)** — full on-call rota,
+> formal IR, and SLAs. In the **Solo-phase (now)** the same plan runs in a **best-effort** form: a **single responder**,
+> **asynchronous alerts (email/Slack, no 24/7 paging)**, and realistic remediation windows. The runbooks, severity
+> levels, and breach-notification procedure are still authored now so the team-mode escalation is drop-in later.
 
 - **SEC-IR-01 (MUST)** Documented IR plan with severity levels, on-call, and escalation.
 - **SEC-IR-02 (MUST)** Each alert links to a **runbook** (`docs/runbooks/`) with diagnosis + containment steps.
@@ -174,17 +203,17 @@ The application requirements those gates enforce are specified here: container i
 
 A service **MUST NOT** reach production until **all** are true:
 
-- [ ] Private repo + protected `main`; PR-from-feature-branch + green CI to merge ([engineering/01 §7](../engineering/01-repositories.md#7-branch-protection-all-repos))
+- [ ] Public repo + protected `main`; PR-from-feature-branch + green CI to merge ([engineering/01 §7](../engineering/01-repositories.md#7-branch-protection-all-repos))
 - [ ] Own workload identity + own least-privilege DB credentials (§2, §6)
 - [ ] Local JWT validation + tenant `householdId` filter with passing arch test (§3, §4)
 - [ ] mTLS + default-deny NetworkPolicy + declared dependencies only (§5)
 - [ ] No secrets in repo/image; vault-sourced config (§6)
 - [ ] Encryption in transit + at rest; no RESTRICTED data in telemetry (§7)
 - [ ] All SDLC gates green; signed image + SBOM; non-root, read-only fs ([engineering/04](../engineering/04-secure-sdlc.md#2-secure-sdlc--supply-chain))
-- [ ] **100% line + branch coverage** + mutation score ≥ 85% (no surviving mutants in money/authz/tenant code) — [engineering/03 · Testing](../engineering/03-testing-standard.md)
+- [ ] **Coverage gate (BLOCKING):** backend Domain+Application = **100% line + branch + mutation ≥85%** (100% on money/authz/tenant code); web/mobile/infra = **≥80% target, reported but non-blocking** — [engineering/03 · Testing](../engineering/03-testing-standard.md)
 - [ ] Audit logging of security events wired to SIEM with alerting (§9)
 - [ ] No open Critical/High vulns past SLA (§10)
-- [ ] 2–3 pods, probes, PDB, resilience policies (§11)
+- [ ] ≥2 replicas (HA), probes, PDB (minAvailable 1), rolling deploys, HPA autoscaling, resilience policies (§11)
 - [ ] Runbooks + IR/breach procedure linked (§12)
 - [ ] Architecture tests pass: **no money movement, no outbound financial-institution calls** (Phase 0 guardrail)
 

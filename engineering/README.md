@@ -8,12 +8,15 @@ later phases.
 
 The repo workflow is deliberately minimal:
 
-- **All repositories are private** in the `get-due-dev` org.
+- **All repositories are public** in the `getdue-dev` org — on the GitHub Free plan, classic branch protection only
+  applies to public repos, so keeping them public is what lets every `main` stay protected without a paid upgrade.
 - **`main` is protected:** branch off `main` → open a **pull request** → **CI must be green** → merge. **No direct
   pushes, no force-push.** Solo phase: the maintainer self-merges once CI is green.
 
-That is it. No CODEOWNERS, signed-commit, ruleset, or environment-approval machinery is configured — those are an
-organisational decision for if/when a team forms, and are out of scope here.
+The protected-branch rule set (CODEOWNERS, signed commits, linear history, conversation resolution, auto-delete
+branches, `SECURITY.md`) is detailed in [01 §7](./01-repositories.md#7-branch-protection-all-repos). Heavier
+team controls (multiple reviewers, separation of duties, environment approvals) are an organisational decision for
+if/when a team forms, and are out of scope here.
 
 ## Documents
 

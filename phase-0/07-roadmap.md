@@ -13,7 +13,7 @@
 | **M4.5** | Client dashboard & analytics | `/dashboard` read model + widgets (net worth, allocation, debt, goals, currency exposure, KPIs) | Single-call dashboard renders on web + mobile; values match net-worth fixtures; `unconverted` surfaced |
 | **M5** | Monitoring | Ops dashboards + financial-health insights + alerts | Dashboards live; an alert fires; insights endpoint returns signals |
 | **M6** | iPhone app | Thin client for view + key edits | App Store TestFlight build hitting staging API |
-| **M7** | Hardening | Security review, load test, runbooks, backup/restore drill | OWASP ASVS L1 pass; **100% coverage + mutation gates green**; restore drill green; SLOs met |
+| **M7** | Hardening | Security review, load test (**k6**, Gatling alt) + **chaos testing** (fault/pod-kill), runbooks, DR backup/restore drill | OWASP ASVS L1 pass; **backend Domain+Application 100% + mutation ≥85% gates green**; **k6 load test** meets SLOs; **chaos experiments** (pod-kill/fault injection) survived; DR restore drill green; SLOs met |
 
 Suggested sequence: **M0 → M1 → M2 → M3 → M4 → M5** in parallel-friendly order, with **M6 (mobile)** starting after
 M3 (once the contract is stable) and **M7** as the closing gate.
@@ -26,10 +26,14 @@ M3 (once the contract is stable) and **M7** as the closing gate.
 - [ ] At least one financial goal type works end-to-end with projections.
 - [ ] **Client dashboard** live on web + mobile: net worth, allocation, debt, goals, currency exposure, KPIs from a single `/dashboard` read model ([10](./10-dashboard-analytics.md)).
 - [ ] Operational dashboards + financial-health insights live; alerting verified.
+- [ ] **Admin/operator surface** works: household **suspend** and **projection rebuild** (trigger the reconcile/rebuild job); **audit-log read** available.
+- [ ] **i18n** + **accessibility (WCAG 2.1 AA)** met on web; **attachments/documents** and **search** across entities work.
+- [ ] **DR restore drill** executed (RTO 4h / RPO ≤15 min) and the **projection reconcile/rebuild job** is idempotent/replayable with **drift monitoring** ([05 §5](./05-monitoring.md#5-financial-health-monitoring-the-product-facing-half), [05 §10](./05-monitoring.md#10-disaster-recovery-rtorpo)).
+- [ ] **Load test (k6)** + **chaos experiments** (pod-kill/fault injection) run and SLOs hold.
 - [ ] **Every service passes the [§13 security acceptance gate](./09-security-standard.md#13-per-service-security-acceptance-gate-release-checklist)** — no service ships to prod otherwise.
-- [ ] Multi-repo setup live: per-service repos + shared `contracts`/`buildingblocks`, **private repos + protected `main`** ([engineering/01](../engineering/01-repositories.md)).
+- [ ] Multi-repo setup live: per-service repos + shared `contracts`/`buildingblocks`, **public repos + protected `main`** ([engineering/01](../engineering/01-repositories.md)).
 - [ ] CI runs unit + integration + **architecture/guardrail** tests + full security gate (SAST/SCA/secret/IaC/container scan, image signing) on every PR.
-- [ ] **100% line + branch coverage** + mutation testing enforced as a blocking CI gate on every repo ([engineering/03 · Testing](../engineering/03-testing-standard.md)).
+- [ ] **Differentiated coverage gates** enforced in CI ([engineering/03 · Testing](../engineering/03-testing-standard.md)): backend **Domain + Application = 100% line + branch + mutation ≥ 85%** (100% on money/authz/tenant paths) as a **blocking** gate; **web / mobile / infra = ≥ 80% target, non-blocking**.
 - [ ] Backup + restore drill executed and documented.
 - [ ] OpenAPI published; both clients generate types from it.
 
@@ -64,13 +68,14 @@ M3 (once the contract is stable) and **M7** as the closing gate.
 | Telemetry leaks PII/amounts | Privacy incident | Hashed IDs, no amounts in telemetry, reviewed in M7 |
 | Single-region outage | Downtime | Phase 0 accepts it (99.5% SLO); multi-region is a later decision |
 | Distributed-system complexity (broker, per-service DB, eventual consistency) | Slower start, harder debugging | Shared `BuildingBlocks` (outbox, events, OTel); idempotent consumers; distributed tracing from day one |
+| Projection drift (eventually-consistent read models diverge from source snapshots) | Wrong net worth / dashboard | Idempotent **reconcile/rebuild job** rebuilds projections from valuation snapshots; **drift monitoring** alerts on divergence ([05 §5](./05-monitoring.md#5-financial-health-monitoring-the-product-facing-half)) |
 
 ## 6. First two weeks (concrete starting point)
 
 1. Create the **shared repos first** ([engineering/01](../engineering/01-repositories.md)): `getdue-contracts`, `getdue-buildingblocks`, `getdue-platform`, `getdue-deploy`, and the org `.github` (reusable CI workflows).
-2. Make every repo **private** and **protect `main`** — PR-from-feature-branch, required CI gates, no force-push (plain **GitHub Flow**, [engineering/01 §7](../engineering/01-repositories.md#7-branch-protection-all-repos)).
+2. Make every repo **public** and **protect `main`** — PR-from-feature-branch, required CI gates, no force-push (plain **GitHub Flow**, [engineering/01 §7](../engineering/01-repositories.md#7-branch-protection-all-repos)).
 3. Stand up the `getdue-platform` Docker Compose mesh: Postgres, Redis, **RabbitMQ**, OTel Collector, Grafana stack.
 4. Build **one reference service repo** (`getdue-identity`): 4-project shape, own DB, JWT validation, tenant filter, health checks, first trace — the template every other service repo copies.
-5. Add the gateway repo (`getdue-gateway`) + each service's `deploy/k8s` (Deployment replicas: 2, HPA max 3, probes, PDB) on **Kubernetes (AKS)**; verify a rolling, zero-downtime deploy.
+5. Add the gateway repo (`getdue-gateway`) + each service's `deploy/k8s` (Deployment replicas: 2, HPA max 10, probes, PDB) on **Kubernetes (AKS)**; verify a rolling, zero-downtime deploy.
 6. Wire the **reusable** CI pipeline (build → test → archtest → SAST/secret/SCA/IaC/container scan → SBOM + sign → push image → GitOps deploy), consumed by every service repo ([engineering/04 · Secure SDLC](../engineering/04-secure-sdlc.md)).
 7. Prove the event path: emit a domain event from Identity through the outbox → RabbitMQ → a stub consumer, traced end-to-end. Every subsequent service repo reuses this skeleton.
