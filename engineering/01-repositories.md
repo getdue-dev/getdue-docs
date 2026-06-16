@@ -6,12 +6,13 @@ isolated access, and a blast radius of one.
 
 ## 0. Ownership & GitHub Flow (Phase 0)
 
-Phase 0 is **solo-maintained** in a **private** GitHub organization, `get-due-dev`. The repo workflow is deliberately
+Phase 0 is **solo-maintained** in the `getdue-dev` GitHub organization. The repo workflow is deliberately
 minimal — plain **GitHub Flow** on top of two settings:
 
-- **All repositories are private.**
+- **All repositories are public.** The org is on the **GitHub Free** plan, where branch protection only applies to
+  public repos — keeping repos public is what lets every repo carry a protected `main` with no paid upgrade.
 - **The default branch (`main`) is protected:** work happens on a **feature branch**, lands via a **pull request**,
-  and **CI must be green** to merge. **No direct pushes** to `main` and **no force-push**.
+  and **CI must be green** to merge. **No direct pushes** to `main` and **no force-push**. (Full rule set in §7.)
 
 That is the whole governance surface for the solo phase. Heavier controls (multiple reviewers, separation of duties,
 etc.) are an organisational decision for when a team forms — they are not configured now and are out of scope for
@@ -58,7 +59,7 @@ graph TB
 
 ## 2. Repository inventory
 
-All repos are **private** in the `get-due-dev` org.
+All repos are **public** in the `getdue-dev` org.
 
 | Repo | Type | Publishes |
 |---|---|---|
@@ -137,10 +138,19 @@ The security gates above are the supply-chain side of the pipeline; their thresh
 
 ## 7. Branch protection (all repos)
 
-- **Repos are private** in the `get-due-dev` org.
-- **Protected default branch (`main`):** no direct pushes; **PR required** from a feature branch; no force-push.
-- **Required status checks:** all CI gates in §6 must pass — **no merge on red**. In the solo phase the maintainer
-  self-merges once CI is green.
+- **Repos are public** in the `getdue-dev` org — this is what lets classic branch protection work on the GitHub
+  Free plan (it returns 403 for private repos on that plan).
+- **Protected default branch (`main`):** no direct pushes; **PR required** from a feature branch; **no force-push**
+  and **no deletion**.
+- **Required status checks (strict):** all CI gates in §6 must pass and the feature branch must be **up to date with
+  `main`** before merge — **no merge on red**, no stale merges. In the solo phase the maintainer self-merges once CI
+  is green (`required_approving_review_count: 0`, `enforce_admins: false`).
+- **Linear history:** merges are squash/rebase only, keeping `main` linear (matches the feature-branch flow).
+- **Conversation resolution required:** every PR review thread must be resolved before merge.
+- **Signed commits required:** every commit on `main` must carry a verified GPG/SSH signature.
+- **Auto-delete merged branches:** merged feature branches are cleaned up automatically (branch → PR → merge).
+- **`CODEOWNERS`** makes the maintainer the default owner, so they're auto-requested as a reviewer on every PR — a
+  request, not a gate, in the solo phase (you can't approve your own PR, so requiring it would block self-merge).
 - **`SECURITY.md`** is checked in to every repo, pointing at the secure-SDLC doc.
 
 ## 8. Local development across repos
