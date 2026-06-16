@@ -1,9 +1,9 @@
-# 11 · Versioning System (Cloud-Wide)
+# 02 · Versioning System (Cloud-Wide)
 
 A microservices platform has **many things that version independently** — APIs, services, contracts, events,
 databases, infra. This document is the **single authoritative versioning standard** for all of GetDue. It unifies the
-rules already referenced in [04 · API Design](./04-api-design.md), [08 · Repositories & Contracts](./08-repositories.md),
-and [09 · Security Standard](./09-security-standard.md).
+rules already referenced in [04 · API Design](../phase-0/04-api-design.md), [08 · Repositories & Contracts](./01-repositories.md),
+and [09 · Security Standard](../phase-0/09-security-standard.md).
 
 ## 0. Principles
 
@@ -20,7 +20,7 @@ and [09 · Security Standard](./09-security-standard.md).
 |---|---|---|---|
 | **Public API** | URL major `/v1` + deprecation headers | gateway + each service | this doc §2 |
 | **Service / release** | SemVer git tag → container image tag | each service repo | §3 |
-| **Contracts (DTOs/OpenAPI)** | SemVer package | `getdue-contracts` | §4 + [08 §3](./08-repositories.md#3-the-contracts-repo-getdue-contracts) |
+| **Contracts (DTOs/OpenAPI)** | SemVer package | `getdue-contracts` | §4 + [08 §3](./01-repositories.md#3-the-contracts-repo-getdue-contracts) |
 | **Integration events** | `schemaVersion` + SemVer package | `getdue-contracts` | §5 |
 | **Shared library** | SemVer NuGet | `getdue-buildingblocks` | §6 |
 | **Database schema** | ordered migrations (expand/contract) | each service repo | §7 |
@@ -59,7 +59,7 @@ container image   registry/getdue-accounts:2.4.1
 ```
 
 - **Tag = source of truth.** CI builds, tests, scans, **signs (cosign)**, and attaches an **SBOM + SLSA provenance**
-  to the image ([09 §8](./09-security-standard.md#8-secure-sdlc--supply-chain)). The same immutable image is promoted
+  to the image ([09 §8](./04-secure-sdlc.md#2-secure-sdlc--supply-chain)). The same immutable image is promoted
   staging → production — **never rebuilt per environment**.
 - **No `latest` in production.** Deployments pin an exact version; admission control rejects unsigned/untagged images.
 - A service's **API major** and its **release version** are decoupled: `accounts` can go `2.x → 3.x` internally while
@@ -70,7 +70,7 @@ container image   registry/getdue-accounts:2.4.1
 ## 4. Contract (DTO / OpenAPI) versioning
 
 The `getdue-contracts` package is **SemVer**, and is the coupling point between services and clients
-([08 §3](./08-repositories.md#3-the-contracts-repo-getdue-contracts)):
+([08 §3](./01-repositories.md#3-the-contracts-repo-getdue-contracts)):
 
 - **MINOR** = additive (new optional field/endpoint/enum) → consumers upgrade at will, nothing breaks.
 - **MAJOR** = breaking → requires an ADR, a new API major (§2), and a migration window.
@@ -92,8 +92,9 @@ Integration events on RabbitMQ are versioned so producers and consumers evolve i
 ## 6. Shared library versioning
 
 `getdue-buildingblocks` (Money, outbox, idempotency, OTel, auth) is **SemVer NuGet**. A breaking change is a MAJOR
-bump; **Dependabot** opens upgrade PRs across all consuming repos, and each service's CI re-runs contract + arch tests
-before merge ([08 §5](./08-repositories.md#5-versioning--dependency-flow)). Services pin exact versions — no floating ranges.
+bump; an **automated dependency-update bot** opens upgrade PRs across all consuming repos, and each service's CI re-runs
+contract + arch tests before merge ([01 §5](./01-repositories.md#5-versioning--dependency-flow)). Services pin exact
+versions — no floating ranges.
 
 ## 7. Database schema versioning (zero-downtime)
 
@@ -137,15 +138,15 @@ Every service exposes and emits its version so any environment is auditable:
 
 - **`GET /health`** (and a `/version` probe) returns `{ service, version, gitSha, builtAt, apiVersions: ["v1"] }`.
 - **OpenTelemetry resource attributes** stamp `service.version` on every span/metric/log → dashboards and traces are
-  filterable by version, so you can compare error rates **across a rollout** ([05 · Monitoring](./05-monitoring.md)).
+  filterable by version, so you can compare error rates **across a rollout** ([05 · Monitoring](../phase-0/05-monitoring.md)).
 - The **gateway** aggregates each service's version into a platform **release manifest** (also the GitOps commit, §8).
 
 ## 11. Change-log & release process
 
 - Each repo keeps a **`CHANGELOG.md`** (Keep-a-Changelog style); releases are cut from SemVer git tags.
 - **Breaking changes require an ADR** (`docs/adr/`) and a deprecation entry with a sunset date.
-- Releases flow **one immutable artifact** through environments: `build → staging (auto) → production (manual approval,
-  [09 SEC-GOV-05](./09-security-standard.md#1-governance-ownership--change-control))` — the version that passed staging
+- Releases flow **one immutable artifact** through environments: `build → staging (auto) → production (manual
+  promotion)` — the version that passed staging
   is the exact version promoted to prod.
 
 ## 12. ADR additions

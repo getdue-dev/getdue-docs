@@ -396,4 +396,4 @@ Enforced in CI (per service):
 | ADR-011 | **ingress-nginx + cert-manager (DNS-01)** for ingress/TLS; **Cloudflare** (Full strict) as optional edge | nginx baked into k8s, automated HTTPS, no hand-run standalone LB appliance; managed WAF/DDoS without ops overhead (§7.1) |
 
 > Store each ADR as its own file under `docs/adr/` as decisions are ratified. (ADR-008–010 are defined in
-> [11 · Versioning](./11-versioning.md#12-adr-additions).)
+> [11 · Versioning](../engineering/02-versioning.md#12-adr-additions).)

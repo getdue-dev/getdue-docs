@@ -21,8 +21,16 @@ aggregates, tracks, and monitors it.
 | [05 · Monitoring System](./phase-0/05-monitoring.md) | Ops + financial-health observability, alerting, SLOs |
 | [06 · Security & Compliance](./phase-0/06-security.md) | AuthN/Z, data protection, Phase 0 compliance posture |
 | [07 · Roadmap & Phasing](./phase-0/07-roadmap.md) | Milestones, Definition of Done, what unlocks Phase 1 |
-| [08 · Repositories & Contracts](./phase-0/08-repositories.md) | Multi-repo (one per service), shared contracts/libs, branch protection |
-| [09 · Security Standard](./phase-0/09-security-standard.md) | Bank-grade, enforceable security rules for every service |
+| [09 · Security Standard](./phase-0/09-security-standard.md) | Enforceable application/runtime security rules for every service |
 | [10 · Client Dashboard & Analytics](./phase-0/10-dashboard-analytics.md) | Money analytics home screen: net worth, allocation, debt, goals, KPIs |
-| [11 · Versioning System](./phase-0/11-versioning.md) | Cloud-wide versioning: API, services, contracts, events, DB schema, infra |
-| [12 · Testing Standard](./phase-0/12-testing-standard.md) | Mandatory 100% line+branch coverage + mutation testing, enforced in CI |
+
+## Engineering Handbook
+
+Engineering process and tooling — **not tied to a phase** — live in [`./engineering/`](./engineering/README.md).
+
+| Doc | What's inside |
+|---|---|
+| [01 · Repositories & Contracts](./engineering/01-repositories.md) | Multi-repo (one per service), shared contracts/libs, CI/CD, branch protection |
+| [02 · Versioning System](./engineering/02-versioning.md) | Cloud-wide versioning: API, services, contracts, events, DB schema, infra |
+| [03 · Testing Standard](./engineering/03-testing-standard.md) | Mandatory 100% line+branch coverage + mutation testing, enforced in CI |
+| [04 · Secure SDLC](./engineering/04-secure-sdlc.md) | Change-control governance + CI security gates + supply chain |

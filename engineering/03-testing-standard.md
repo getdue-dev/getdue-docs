@@ -1,14 +1,14 @@
-# 12 · Testing Standard — 100% Coverage, Enforced
+# 03 · Testing Standard — 100% Coverage, Enforced
 
 > **Status:** Mandatory baseline for **every** repo (services, gateway, web, mobile, shared libs). **100% code
 > coverage is a hard, release-blocking CI gate** — no merge to the default branch and no deploy below the threshold.
-> Conformance language is RFC 2119 (**MUST** / **SHOULD**), as in [09 · Security Standard](./09-security-standard.md).
+> Conformance language is RFC 2119 (**MUST** / **SHOULD**), as in [09 · Security Standard](../phase-0/09-security-standard.md).
 
 ## 0. The rule
 
 - **TEST-COV-01 (MUST)** Every repo enforces **100% line coverage AND 100% branch coverage** as a CI gate. The build
   **fails** below 100%; coverage cannot regress.
-- **TEST-COV-02 (MUST)** Coverage is **measured on every PR** and reported as a required status check ([08 §6](./08-repositories.md#6-cicd-per-service-repo)); a PR cannot merge red.
+- **TEST-COV-02 (MUST)** Coverage is **measured on every PR** and reported as a required status check ([08 §6](./01-repositories.md#6-cicd-per-service-repo)); a PR cannot merge red.
 - **TEST-COV-03 (MUST)** 100% is enforced **after** the agreed exclusions in [§4](#4-what-counts-what-is-excluded) — and
   every exclusion is explicit, justified, and reviewed. "100%" therefore means *100% of code that carries logic*, never
   a silent denominator shrink.
@@ -26,8 +26,8 @@
 |---|---|---|---|
 | **Unit** | `Domain` + `Application` logic in isolation | xUnit + FluentAssertions; Vitest (web); XCTest (iOS) | the bulk of coverage |
 | **Integration** | `Infrastructure` against **real** Postgres/Redis/RabbitMQ | **Testcontainers** | EF queries, outbox, consumers |
-| **Contract** | producer/consumer message + API compatibility | Pact-style / schema validation ([08 §5](./08-repositories.md#5-versioning--dependency-flow)) | event & API shape |
-| **Architecture** | layering, tenant filter, guardrails | NetArchTest | invariants ([01 §9](./01-architecture.md#9-architecture-tests)) |
+| **Contract** | producer/consumer message + API compatibility | Pact-style / schema validation ([08 §5](./01-repositories.md#5-versioning--dependency-flow)) | event & API shape |
+| **Architecture** | layering, tenant filter, guardrails | NetArchTest | invariants ([01 §9](../phase-0/01-architecture.md#9-architecture-tests)) |
 | **E2E** | critical user journeys end-to-end | Playwright (web), XCUITest (iOS) | smoke, not counted toward unit coverage |
 
 Coverage is measured across unit + integration (the layers that execute application code). E2E/UI tests are required
@@ -43,7 +43,7 @@ for confidence but are **not** the vehicle for hitting 100% — they're slow and
 
 ## 3. CI enforcement
 
-Each repo's reusable pipeline ([08 §6](./08-repositories.md#6-cicd-per-service-repo)) runs the coverage gate as a
+Each repo's reusable pipeline ([08 §6](./01-repositories.md#6-cicd-per-service-repo)) runs the coverage gate as a
 **required, blocking** step:
 
 ```
@@ -53,16 +53,15 @@ MUTATION GATE: mutation score ≥ threshold (§5) →
 architecture tests → security gates (§09) → publish image
 ```
 
-- The **coverage report is published** as a PR artifact/comment and as a required status check (branch protection,
-  [09 SEC-GOV-02](./09-security-standard.md#1-governance-ownership--change-control)).
+- The **coverage report is published** as a PR artifact/comment and as a required status check
+  ([01 §7 branch protection](./01-repositories.md#7-branch-protection-all-repos)).
 - **No ratchet-down:** the threshold is fixed at 100; it is never lowered to make a build pass.
 
 ## 4. What counts, what is excluded
 
 100% applies to **code that carries behavior**. The following are **excluded** — but only via an explicit,
 version-controlled allow-list (e.g. `[ExcludeFromCodeCoverage]` with a reason, or coverage-config globs), each
-reviewed in PR (solo phase: maintainer self-review; CODEOWNER approval reinstated when the team grows —
-[09 §0.1](./09-security-standard.md#01-solo-phase-scope)):
+reviewed in PR:
 
 | Excluded | Why | How |
 |---|---|---|
@@ -92,18 +91,18 @@ covered, including error/edge branches.
 - **TEST-Q-03 (MUST)** **Determinism:** no real clock/RNG/network in unit tests; inject time and ids. Flaky tests are
   treated as failing and quarantined+fixed, never retried-until-green.
 - **TEST-Q-04 (MUST)** **Money & multi-currency** logic has property-based / boundary tests (rounding, currency
-  mismatch rejection, missing-FX-rate path) — see [03 §5](./03-domain-model.md#5-multi-currency-model).
+  mismatch rejection, missing-FX-rate path) — see [03 §5](../phase-0/03-domain-model.md#5-multi-currency-model).
 - **TEST-Q-05 (SHOULD)** New bug fixes ship with a **regression test** that fails before the fix.
 
 ## 7. Acceptance gate addition
 
-This extends the per-service release gate in [09 §13](./09-security-standard.md#13-per-service-security-acceptance-gate-release-checklist):
+This extends the per-service release gate in [09 §13](../phase-0/09-security-standard.md#13-per-service-security-acceptance-gate-release-checklist):
 
 - [ ] **100% line + branch coverage** enforced in CI, report attached (TEST-COV-01/02)
 - [ ] Exclusions limited to the reviewed allow-list (TEST-COV-03)
 - [ ] **Mutation score ≥ 85%** (100% for money-critical modules); no surviving mutants in money/authz/tenant code (TEST-MUT-01)
 - [ ] Integration tests run against real Postgres/Redis/RabbitMQ via Testcontainers (TEST-Q-02)
-- [ ] Architecture/guardrail tests green ([01 §9](./01-architecture.md#9-architecture-tests))
+- [ ] Architecture/guardrail tests green ([01 §9](../phase-0/01-architecture.md#9-architecture-tests))
 
 ## 8. Trade-offs (recorded honestly)
 
