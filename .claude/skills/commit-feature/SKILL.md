@@ -20,6 +20,21 @@ given, derive both from the actual diff.
 Run these steps in order. If any step fails, STOP and report the failure — do not
 continue and do not leave the repo in a half-migrated state.
 
+### 0. Switch to main and pull the latest changes
+
+Before inspecting the working tree, make sure `main` is checked out and up to date
+with the remote. Any uncommitted changes follow the checkout and are handled by the
+stash step below.
+
+```bash
+git checkout main
+git pull --ff-only origin main
+```
+
+If `git checkout main` fails because uncommitted changes would be overwritten, STOP
+and report it. If `git pull --ff-only` fails because local `main` diverged from
+origin, STOP and report it rather than merging or rebasing automatically.
+
 ### 1. Confirm there is something to ship
 
 ```bash
@@ -43,12 +58,17 @@ If git reports "No local changes to save", there were no uncommitted changes (th
 may already be committed on the current branch) — note that and continue without a
 stash to pop in step 5.
 
-### 3. Switch to an up-to-date main
+### 3. Confirm you are still on an up-to-date main
+
+Step 0 already checked out `main` and pulled. After the stash, you should still be on
+`main` with a clean tree. Sanity-check before branching:
 
 ```bash
-git checkout main
-git pull --ff-only origin main
+git rev-parse --abbrev-ref HEAD   # expect: main
+git status --porcelain            # expect: empty
 ```
+
+If either check fails, STOP and report it.
 
 ### 4. Create the feature branch from main
 
@@ -119,7 +139,5 @@ branch name and commit message used.
 ## Notes
 
 - Never force-push and never delete the remote branch — the PR depends on it.
-- If `git pull --ff-only` fails because local `main` diverged from origin, STOP and
-  report it rather than merging or rebasing automatically.
 - If the repo has no `origin` remote or `gh` is not authenticated, do the commit steps
   but STOP before pushing and tell the user what is missing.
