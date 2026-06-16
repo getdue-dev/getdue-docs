@@ -77,6 +77,13 @@ the commit step relies on the `commit-feature` skill, which branches off an exis
 gh repo create getdue-dev/<name> --public --add-readme --description "<one-line purpose>"
 ```
 
+Enable **automatically delete head branches** so merged feature branches are cleaned
+up — this keeps the repo aligned with the `commit-feature` flow (branch → PR → merge):
+
+```bash
+gh api -X PATCH repos/getdue-dev/<name> -F delete_branch_on_merge=true
+```
+
 ### 2. Clone and scaffold
 
 Clone into the **clone location the user gave you** (see Inputs §3) — referred to below
