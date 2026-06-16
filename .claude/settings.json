@@ -1,0 +1,17 @@
+{
+    "permissions": {
+        "allow": [
+            "Bash",
+            "Read",
+            "Write",
+            "mcp__claude_ai_Todoist__fetch-object",
+            "mcp__claude_ai_Todoist__add-tasks",
+            "mcp__claude_ai_Todoist__update-tasks",
+            "mcp__claude_ai_Todoist__complete-tasks",
+            "mcp__claude_ai_Todoist__find-projects",
+            "mcp__claude_ai_Todoist__add-projects",
+            "mcp__claude_ai_Todoist__update-projects",
+            "mcp__claude_ai_Todoist__project-management"
+        ]
+    }
+}
