@@ -1,13 +1,13 @@
 ---
 name: create-new-repo
-description: Create a new GetDue repository that follows the polyrepo conventions in engineering/01-repositories.md — private repo in the get-due-dev org, protected main branch, SECURITY.md, and the shared reusable CI workflow. Use when the user wants to spin up a new service/client/shared/infra repo (e.g. "/create-new-repo getdue-stocks", "create the goals service repo").
+description: Create a new GetDue repository that follows the polyrepo conventions in engineering/01-repositories.md — private repo in the getdue-dev org, protected main branch, SECURITY.md, and the shared reusable CI workflow. Use when the user wants to spin up a new service/client/shared/infra repo (e.g. "/create-new-repo getdue-stocks", "create the goals service repo").
 ---
 
 # Create New Repo
 
 Create and configure a new repository in the GetDue polyrepo, following
 [engineering/01-repositories.md](../../../engineering/01-repositories.md). Every repo
-is **private** in the `get-due-dev` org, has a **protected `main`**, ships a
+is **private** in the `getdue-dev` org, has a **protected `main`**, ships a
 `SECURITY.md`, and consumes the **shared reusable CI workflow** from the org `.github`
 repo.
 
@@ -35,17 +35,33 @@ before continuing.
 Run these checks first. If any fails, STOP and tell the user what's missing.
 
 ```bash
-gh auth status          # gh must be authenticated
-gh repo view get-due-dev/getdue-contracts >/dev/null 2>&1; echo $?   # org access sanity check
+gh auth status                                    # gh must be authenticated
+gh api orgs/getdue-dev >/dev/null 2>&1 && echo OK # org access sanity check
 ```
 
-Also confirm the repo does not already exist:
+Do **not** probe a specific repo as the canary — when bootstrapping the very first
+repos in the org, none may exist yet, and you may end up probing the repo you're
+about to create. `gh api orgs/getdue-dev` confirms org access without that ambiguity.
+
+Then confirm the target repo does not already exist:
 
 ```bash
-gh repo view get-due-dev/<name> >/dev/null 2>&1 && echo "EXISTS" || echo "OK"
+gh repo view getdue-dev/<name> >/dev/null 2>&1 && echo "EXISTS" || echo "OK"
 ```
 
 If it prints `EXISTS`, STOP — do not overwrite an existing repo.
+
+Finally, probe whether the org-shared reusable CI workflow is in place. This decides
+whether step 2 scaffolds `ci.yml` and whether step 5's ruleset requires it as a
+status check:
+
+```bash
+gh api repos/getdue-dev/.github/contents/.github/workflows >/dev/null 2>&1 \
+  && echo "REUSABLE_WORKFLOWS_PRESENT" || echo "NO_REUSABLE_WORKFLOWS"
+```
+
+If the call 404s, the `.github` repo (or its workflows directory) doesn't exist yet
+— this is normal during early bootstrap. Carry that state into steps 2 and 5.
 
 ## Procedure
 
@@ -58,7 +74,7 @@ the commit step relies on the `commit-feature` skill, which branches off an exis
 `main`. The scaffold README in step 2 overwrites this placeholder.
 
 ```bash
-gh repo create get-due-dev/<name> --private --add-readme --description "<one-line purpose>"
+gh repo create getdue-dev/<name> --private --add-readme --description "<one-line purpose>"
 ```
 
 ### 2. Clone and scaffold
@@ -67,7 +83,7 @@ Clone into the **clone location the user gave you** (see Inputs §3) — referre
 as `<clone-dir>`. Confirm the path doesn't already exist before cloning.
 
 ```bash
-gh repo clone get-due-dev/<name> <clone-dir>
+gh repo clone getdue-dev/<name> <clone-dir>
 ```
 
 Add the baseline files every repo must carry:
@@ -80,15 +96,16 @@ Add the baseline files every repo must carry:
   # Security Policy
 
   Security practices for this repository follow GetDue's
-  [Secure SDLC](https://github.com/get-due-dev/getdue-docs/blob/main/engineering/04-secure-sdlc.md).
+  [Secure SDLC](https://github.com/getdue-dev/getdue-docs/blob/main/engineering/04-secure-sdlc.md).
 
   Report vulnerabilities privately to the maintainer — do not open a public issue.
   ```
 
-- **`.github/workflows/ci.yml`** — call the org reusable workflow rather than
-  redefining the pipeline. The shared workflow lives in `get-due-dev/.github` and runs
-  build → tests → coverage/mutation gates → architecture tests → SAST/secret/SCA/IaC/
-  container scans → SBOM + cosign sign → publish image → bump tag in `getdue-deploy`.
+- **`.github/workflows/ci.yml`** — only scaffold this if the preconditions probe
+  reported `REUSABLE_WORKFLOWS_PRESENT`. The shared workflow lives in
+  `getdue-dev/.github` and runs build → tests → coverage/mutation gates →
+  architecture tests → SAST/secret/SCA/IaC/container scans → SBOM + cosign sign →
+  publish image → bump tag in `getdue-deploy`.
 
   ```yaml
   name: CI
@@ -99,13 +116,19 @@ Add the baseline files every repo must carry:
       branches: [main]
   jobs:
     ci:
-      uses: get-due-dev/.github/.github/workflows/<reusable-workflow>.yml@main
+      uses: getdue-dev/.github/.github/workflows/<reusable-workflow>.yml@main
       secrets: inherit
   ```
 
   Pick the reusable workflow that matches the repo **type** (service image pipeline,
-  client build, package publish, etc.). If you don't know the exact workflow filename,
-  inspect the `.github` repo: `gh api repos/get-due-dev/.github/contents/.github/workflows`.
+  client build, package publish, etc.). Inspect the `.github` repo to confirm the
+  filename: `gh api repos/getdue-dev/.github/contents/.github/workflows`.
+
+  **If preconditions reported `NO_REUSABLE_WORKFLOWS`:** do **not** write `ci.yml` —
+  pointing at a workflow that doesn't exist will fail every PR check and (combined
+  with step 5's required-status-checks rule) wedge the repo. Instead, add a one-line
+  CI section to the README noting that CI will be wired up once `getdue-dev/.github`
+  ships its reusable workflows, and skip the `required_status_checks` rule in step 5.
 
 ### 3. Type-specific notes
 
@@ -128,6 +151,16 @@ the scaffold clone (`<clone-dir>`). It branches off `main`, commits with the req
 `Co-Authored-By` trailer, pushes, opens the PR with the
 `🤖 Generated with [Claude Code]` footer, and returns to a clean `main`.
 
+**Working directory matters.** `commit-feature` runs bare `git`/`gh` commands that
+follow the shell CWD, not the parent skill's CWD. Before invoking it, either:
+
+- `cd <clone-dir>` and run the skill, or
+- run its procedure inline using `git -C <clone-dir>` for every step and a single
+  `cd <clone-dir>` for the `gh pr create` call.
+
+The parent CWD (the docs repo you're running this skill from) is the wrong target —
+mis-targeting will branch and commit inside `getdue-docs` instead of the new repo.
+
 Pass it a description so the branch/commit/PR read sensibly, e.g.
 `chore: bootstrap repo with CI, SECURITY.md, README`.
 
@@ -140,7 +173,7 @@ Apply GitHub Flow protection on `main`: no direct pushes, PR required, required 
 checks green, no force-push.
 
 ```bash
-gh api -X PUT repos/get-due-dev/<name>/branches/main/protection \
+gh api -X PUT repos/getdue-dev/<name>/branches/main/protection \
   --input - <<'JSON'
 {
   "required_status_checks": { "strict": true, "contexts": ["ci"] },
@@ -170,7 +203,7 @@ Give the user:
 
 ## Notes
 
-- Never make the repo public — all GetDue repos are private in `get-due-dev`.
+- Never make the repo public — all GetDue repos are private in `getdue-dev`.
 - Never configure floating dependency ranges or local-path contract deps — only
   pinned, published, tagged versions.
 - If `gh` lacks org-admin rights to set branch protection, complete the scaffold and
