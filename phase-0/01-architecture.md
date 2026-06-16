@@ -5,7 +5,7 @@
 | Principle | Consequence in Phase 0 |
 |---|---|
 | **One backend API surface, many clients** | An API gateway fronts the services; clients hold no business logic |
-| **Stateless microservices** | Each service is horizontally scalable, runs **2–3 pods**, keeps **no in-pod state** — all state lives in Postgres / Redis / the message broker, so any pod can serve any request |
+| **Stateless microservices** | Each service is horizontally scalable, runs an **HA floor of ≥2 replicas** and **autoscales 2→10** (HPA on CPU/RPS; the ceiling is a Phase-0 cost cap — see [08](./08-cost-finops.md)), keeps **no in-pod state** — all state lives in Postgres / Redis / the message broker, so any pod can serve any request |
 | **Clean Architecture + DDD per service** | Every service has pure-C# Domain; infra (EF, HTTP) depends inward, never the reverse |
 | **Database-per-service** | Each service owns its schema; no service reads another's tables — only its API or its events |
 | **Event-driven integration** | Services integrate through a **message broker** + transactional outbox; sync calls only where unavoidable |
@@ -16,7 +16,7 @@
 > **Statelessness, concretely:** no sticky sessions, no in-memory caches that must survive a restart, no local file
 > state. Auth tokens, rate-limit counters, and read caches live in **Redis**; durable data in **PostgreSQL**;
 > in-flight integration events in the **broker**. A pod can be killed and replaced at any moment with zero data loss —
-> which is exactly what lets every service run 2–3 interchangeable replicas behind a load balancer.
+> which is exactly what lets every service run ≥2 interchangeable replicas (autoscaling 2→10) behind a load balancer.
 
 ## 2. C4 — System Context
 
@@ -27,7 +27,7 @@ graph TB
 
     subgraph GetDue["GetDue Cloud Home Bank"]
         GW[API Gateway\n.NET 10]
-        Svcs[Microservices\n.NET 10 · 2–3 pods each]
+        Svcs[Microservices\n.NET 10 · ≥2 pods each, autoscaling]
         Web[Web Cabinet\nNext.js]
         Mobile[iPhone App\nSwiftUI]
         Mon[Monitoring System\nGrafana stack]
@@ -61,7 +61,7 @@ graph TB
         GW[API Gateway / BFF\nYARP · TLS · authn · rate limit · routing]
     end
 
-    subgraph Services["Stateless Microservices — .NET 10 — 2–3 pods each"]
+    subgraph Services["Stateless Microservices — .NET 10 — ≥2 pods each, autoscaling 2→10"]
         Auth[Identity Service]
         Acct[Accounts Service]
         Debt[Debts & Mortgages Service]
@@ -110,7 +110,7 @@ graph TB
     class Auth,Acct,Debt,Prop,Stk,Goal,NW,Ins svc;
 ```
 
-### Services (each = one bounded context, one DB, 2–3 stateless pods)
+### Services (each = one bounded context, one DB, ≥2 stateless pods autoscaling 2→10)
 
 | Service | Aggregate roots | Owns DB | Responsibility |
 |---|---|---|---|
@@ -120,12 +120,17 @@ graph TB
 | **Real Estate** | `Property` | realestate-db | Property records + valuation snapshots |
 | **Stocks Portfolio** | `Portfolio`, `Holding` | stocks-db | Positions, manual/seeded prices, market value |
 | **Goals** | `FinancialGoal` | goals-db | Targets, contributions, progress |
-| **Net Worth / Aggregation** | `ValuationSnapshot` (read model), `ExchangeRate`, dashboard read models | networth-db | Cross-service aggregation + history + **multi-currency FX conversion** + **client dashboard/analytics** read models ([10](./10-dashboard-analytics.md)), built from events |
+| **Net Worth / Aggregation** | `ValuationSnapshot` (read model), `ExchangeRate`, dashboard read models | networth-db | Cross-service aggregation + history + **multi-currency FX conversion** + **client dashboard/analytics** read models ([10](./10-dashboard-analytics.md)), built from events. Net worth and the dashboard are **eventually-consistent projections** (recompute-lag SLO **<5s**); responses carry `asOf` + `projectionVersion`. An idempotent/replayable **reconcile/rebuild job** can rebuild these projections from valuation snapshots, and projection **drift is monitored** ([05](./05-monitoring.md), [10](./10-dashboard-analytics.md)) |
 | **Insights** | `Insight` | insights-db | Financial-health rules → insights/alerts (see [05](./05-monitoring.md)); consumes valuation/goal events via the broker (no cross-service DB reads) |
 
 > Services **never** read each other's databases. They integrate two ways:
 > **(a) asynchronously** via valuation/domain events on the broker (the default), and
 > **(b) synchronously** via the gateway/service API only when a request truly needs another service's current state.
+
+> **Phase-0 DB topology (a cost choice).** The eight databases above are eight **separate databases on a single
+> PostgreSQL Flexible Server**, each with its **own least-privilege role** so a service can reach **only its own DB**.
+> The **database-per-service logical boundary is preserved** (no service reads another's data); true per-instance
+> isolation (one server per service) is a **Target/Phase-1** option, not a Phase-0 requirement.
 
 ## 4. Per-service internal architecture (Clean Architecture)
 
@@ -178,16 +183,21 @@ sequenceDiagram
 The **transactional outbox** guarantees the property revaluation and its published event never diverge, even if a
 pod crashes mid-flight — essential once the consumer (Net Worth) lives in a *different* service and database.
 
+> Because Net Worth consumes the event **after commit**, the net-worth/dashboard read model is an
+> **eventually-consistent projection** (recompute-lag SLO **<5s**); its responses carry `asOf` + `projectionVersion`.
+> If a projection ever drifts it is caught by **drift monitoring** ([05](./05-monitoring.md)) and repaired by the
+> idempotent, replayable **reconcile/rebuild job** that rebuilds projections from valuation snapshots ([10](./10-dashboard-analytics.md)).
+
 ## 6. Statelessness & scaling model
 
 | Aspect | Design |
 |---|---|
-| **Replicas** | Each service runs **2–3 pods** (min 2 for HA, burst to 3); no pod is special |
+| **Replicas** | Each service runs an **HA floor of ≥2 pods** (min 2 for HA) and **autoscales 2→10**; no pod is special |
 | **Session state** | None in-pod — access tokens are stateless JWTs; refresh tokens + rate-limit counters in Redis |
 | **Caching** | Distributed (Redis), never pod-local for anything that must survive a restart |
 | **Load balancing** | Round-robin across pods; no session affinity required |
 | **Health** | Liveness + readiness probes gate traffic and rolling restarts ([05 §3](./05-monitoring.md#3-health-checks)) |
-| **Autoscaling** | Kubernetes HPA on CPU/RPS; floor 2, ceiling 3 in Phase 0 |
+| **Autoscaling** | Kubernetes HPA on CPU/RPS; floor 2 (HA), `maxReplicas: 10`. The ceiling is a documented **Phase-0 cost cap** ([08](./08-cost-finops.md)), not a fixed scaling limit or a security requirement |
 | **Rollout** | Rolling update, surge 1 / unavailable 0 → zero-downtime deploys |
 | **Idempotency** | API writes are deduped by `Idempotency-Key` in shared storage (safe across pods); event consumers dedupe by event id so at-least-once delivery is safe — see [04 §5](./04-api-design.md#5-idempotency-keys) |
 
@@ -206,16 +216,16 @@ graph TB
     end
 
     subgraph K8s["Kubernetes Cluster"]
-        GWd[gateway · Deployment ×2–3]
-        AuthD[identity · Deployment ×2–3]
-        AcctD[accounts · Deployment ×2–3]
-        DebtD[debts · Deployment ×2–3]
-        PropD[realestate · Deployment ×2–3]
-        StkD[stocks · Deployment ×2–3]
-        GoalD[goals · Deployment ×2–3]
-        NWD[networth · Deployment ×2–3]
-        InsD[insights · Deployment ×2–3]
-        WebD[web SSR · Deployment ×2–3]
+        GWd[gateway · Deployment ×2–N]
+        AuthD[identity · Deployment ×2–N]
+        AcctD[accounts · Deployment ×2–N]
+        DebtD[debts · Deployment ×2–N]
+        PropD[realestate · Deployment ×2–N]
+        StkD[stocks · Deployment ×2–N]
+        GoalD[goals · Deployment ×2–N]
+        NWD[networth · Deployment ×2–N]
+        InsD[insights · Deployment ×2–N]
+        WebD[web SSR · Deployment ×2–N]
         MonNS[Monitoring namespace\nGrafana stack]
     end
 
@@ -237,7 +247,7 @@ graph TB
     K8s --> MonNS
 ```
 
-**Per-service Kubernetes objects:** `Deployment` (replicas: 2, HPA max 3) · `Service` (ClusterIP) ·
+**Per-service Kubernetes objects:** `Deployment` (replicas: 2, HPA max 10) · `Service` (ClusterIP) ·
 `HorizontalPodAutoscaler` · `ConfigMap` + `Secret` · liveness/readiness `Probe`s · `PodDisruptionBudget` (minAvailable: 1).
 
 ### 7.1 Edge, ingress & HTTPS
@@ -335,7 +345,7 @@ apiVersion: apps/v1
 kind: Deployment
 metadata: { name: accounts }
 spec:
-  replicas: 2                          # HPA scales to 3 under load
+  replicas: 2                          # HA floor; HPA scales to 10 under load (ceiling = Phase-0 cost cap, see 08)
   strategy:
     rollingUpdate: { maxSurge: 1, maxUnavailable: 0 }   # zero-downtime
   template:
@@ -353,7 +363,7 @@ metadata: { name: accounts }
 spec:
   scaleTargetRef: { apiVersion: apps/v1, kind: Deployment, name: accounts }
   minReplicas: 2
-  maxReplicas: 3
+  maxReplicas: 10                       # Phase-0 cost cap (see 08-cost-finops.md), not a fixed scaling limit
   metrics:
     - type: Resource
       resource: { name: cpu, target: { type: Utilization, averageUtilization: 70 } }
@@ -369,13 +379,13 @@ spec:
 |---|---|---|---|
 | `local` | Dev | Docker Compose (all services + Postgres + Redis + RabbitMQ + Grafana stack) | Seeded demo household |
 | `staging` | Integration + UAT | Kubernetes, 2 pods/service | Anonymized/synthetic |
-| `production` | Live | Kubernetes, 2–3 pods/service | Real user data, encrypted |
+| `production` | Live | Kubernetes, ≥2 pods/service (autoscaling 2→10) | Real user data, encrypted |
 
 ## 9. Architecture tests
 
 Enforced in CI (per service):
 
-- **No outbound finance / market / FX calls:** every `HttpClient` registered in `Program.cs` MUST set a `BaseAddress` whose host is on the Phase-0 egress allowlist (cluster-internal DNS, Postgres, Redis, Key Vault, RabbitMQ, OTel Collector, Cloudflare API for cert-manager). The NetArchTest rule asserts both (a) no SDK/namespace references to bank/brokerage/market-data vendors **and** (b) no `HttpClient` `BaseAddress` resolving to an external host outside the allowlist. This blocks generic public FX/market endpoints (e.g. `api.exchangerate.host`, `query1.finance.yahoo.com`) that would otherwise bypass the SDK-namespace check, enforcing the Phase-0 invariant "no live FX/market feed" ([00 §3](./00-overview.md#3-non-goals-phase-0)).
+- **No outbound finance / market / FX calls:** every `HttpClient` registered in `Program.cs` MUST set a `BaseAddress` whose host is on the Phase-0 egress allowlist. The allowlist has two tiers: **(1) infrastructure** — cluster-internal DNS, Postgres, Redis, Key Vault, RabbitMQ, OTel Collector, Cloudflare API for cert-manager; and **(2) operational SaaS** — the transactional-email provider, push gateways (APNs/FCM), and the breached-password API (HIBP). The NetArchTest rule asserts both (a) no SDK/namespace references to bank/brokerage/market-data vendors **and** (b) no `HttpClient` `BaseAddress` resolving to an external host outside the allowlist. This blocks generic public FX/market endpoints (e.g. `api.exchangerate.host`, `query1.finance.yahoo.com`) that would otherwise bypass the SDK-namespace check, enforcing the Phase-0 invariant "no live FX/market feed" ([00 §3](./00-overview.md#3-non-goals-phase-0)) **while still permitting the email/push/breach-check egress that auth and notifications need** (the guardrail targets *financial* feeds, not all egress — [09 SEC-NET-06](./09-security-standard.md#5-service-to-service--network-security-zero-trust)).
 - **Dependency direction:** `Domain` references nothing; `Application` references only `Domain`;
   `Infrastructure`/`Api` may not be referenced by inner layers (**NetArchTest** / **ArchUnitNET**).
 - **No cross-service DB access:** a service may reference only its own `Infrastructure` DB context.
@@ -386,13 +396,13 @@ Enforced in CI (per service):
 
 | ID | Decision | Why |
 |---|---|---|
-| ADR-001 | **Stateless microservices** (2–3 pods each) on **Kubernetes** | Independent scaling/deploy per context; HA; native HPA/probes/PDB; container-first |
+| ADR-001 | **Stateless microservices** (≥2 pods each, HPA autoscaling 2→10) on **Kubernetes** | Independent scaling/deploy per context; HA; native HPA/probes/PDB; container-first |
 | ADR-002 | **Database-per-service** on PostgreSQL 16 | True service autonomy; integrate via events, not shared tables |
 | ADR-003 | **RabbitMQ** as the integration broker + transactional outbox | Reliable async events across services; at-least-once + idempotent consumers |
 | ADR-004 | Event-sourced *valuations* (not full ES) | Net-worth history without the cost of full event sourcing |
 | ADR-005 | OpenTelemetry as the only instrumentation API | Vendor-neutral; distributed traces across service hops |
 | ADR-006 | Native SwiftUI for iPhone (ratified) | Best UX/App-Store fit; thin client keeps it low-risk; MAUI/RN rejected |
-| ADR-007 | **.NET 10** as the backend runtime | Latest LTS, performance, minimal APIs, native AOT-ready |
+| ADR-007 | **.NET 10** as the backend runtime | Current LTS (verify GA/LTS timing before pinning version targets), performance, minimal APIs, AOT-friendly where the stack allows (EF Core limits full native AOT today) |
 | ADR-011 | **ingress-nginx + cert-manager (DNS-01)** for ingress/TLS; **Cloudflare** (Full strict) as optional edge | nginx baked into k8s, automated HTTPS, no hand-run standalone LB appliance; managed WAF/DDoS without ops overhead (§7.1) |
 
 > Store each ADR as its own file under `docs/adr/` as decisions are ratified. (ADR-008–010 are defined in

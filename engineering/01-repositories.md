@@ -7,27 +7,29 @@ isolated access, and a blast radius of one.
 ## 0. Ownership & GitHub Flow (Phase 0)
 
 Phase 0 is **solo-maintained** in the `getdue-dev` GitHub organization. The repo workflow is deliberately
-minimal — plain **GitHub Flow** on top of two settings:
+minimal — plain **GitHub Flow** resting on two foundations (the full protected-branch rule set is in §7):
 
-- **All repositories are public.** The org is on the **GitHub Free** plan, where branch protection only applies to
-  public repos — keeping repos public is what lets every repo carry a protected `main` with no paid upgrade.
+- **All repositories are public.** This is a **portfolio project**, so the work is deliberately open for peers and
+  recruiters to review; public repos also get **classic branch protection for free**, so every repo carries a
+  protected `main`. This is safe because **no secrets live in the repos** (CI secret-scanning enforces that). (The
+  GitHub Free plan also requires public repos for protected branches, but the primary reason is portfolio visibility.)
 - **The default branch (`main`) is protected:** work happens on a **feature branch**, lands via a **pull request**,
   and **CI must be green** to merge. **No direct pushes** to `main` and **no force-push**. (Full rule set in §7.)
 
-That is the whole governance surface for the solo phase. Heavier controls (multiple reviewers, separation of duties,
-etc.) are an organisational decision for when a team forms — they are not configured now and are out of scope for
-these docs.
+Beyond that protected-branch rule set, the governance surface for the solo phase is intentionally bare. Heavier
+controls (multiple reviewers, separation of duties, environment approvals, etc.) are an organisational decision for
+when a team forms — they are not configured now and are out of scope for these docs.
 
 ## 1. Repository map
 
 ```mermaid
 graph TB
     subgraph Shared["Shared repos (source of truth)"]
-        C[getdue-contracts\nevents · OpenAPI · DTOs]
-        BB[getdue-buildingblocks\nMoney · outbox · OTel · auth]
-        PL[getdue-platform\nTerraform · Helm · base manifests]
-        DP[getdue-deploy\nArgo CD app-of-apps]
-        GH[.github\nreusable CI workflows]
+        C["getdue-contracts<br/>events · OpenAPI · DTOs"]
+        BB["getdue-buildingblocks<br/>Money · outbox · OTel · auth"]
+        PL["getdue-platform<br/>Terraform · Helm · base manifests"]
+        DP["getdue-deploy<br/>Argo CD app-of-apps"]
+        GH[".github<br/>reusable CI workflows"]
     end
 
     subgraph Services["Service repos (one each)"]
@@ -130,7 +132,7 @@ Each service repo runs the **same reusable workflow** (`.github`), so the pipeli
 build → unit + integration tests → 100% coverage gate + mutation gate (03) → architecture tests →
 SAST + secret scan + SCA + IaC scan + container scan →
 SBOM + image sign (cosign) → publish image to registry →
-bump image tag in getdue-deploy (GitOps) → Argo CD rolls out (2–3 pods)
+bump image tag in getdue-deploy (GitOps) → Argo CD rolls out (≥2 pods, autoscaling)
 ```
 
 The security gates above are the supply-chain side of the pipeline; their thresholds and the secure-SDLC rules live in
@@ -138,8 +140,10 @@ The security gates above are the supply-chain side of the pipeline; their thresh
 
 ## 7. Branch protection (all repos)
 
-- **Repos are public** in the `getdue-dev` org — this is what lets classic branch protection work on the GitHub
-  Free plan (it returns 403 for private repos on that plan).
+- **Repos are public** in the `getdue-dev` org — this is a **portfolio project** meant to be reviewable by peers and
+  recruiters, and public repos get **classic branch protection at no cost**; it is safe because no secrets live in the
+  repos (CI secret-scanning enforces that). (The Free plan also requires public repos for protected branches — it
+  returns 403 for private repos — but that's a secondary consequence, not the reason.)
 - **Protected default branch (`main`):** no direct pushes; **PR required** from a feature branch; **no force-push**
   and **no deletion**.
 - **Required status checks (strict):** all CI gates in §6 must pass and the feature branch must be **up to date with

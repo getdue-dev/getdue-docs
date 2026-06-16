@@ -216,7 +216,7 @@ erDiagram
 | **PaymentSchedule** | `PaymentSchedule` (contains `ScheduledInstallment`) | Belongs to exactly one loan; `Σ principal_due = original principal`; installments ordered by `seq_no`/`due_date`; **immutable once issued** — re-amortization creates a new `version` |
 | **LoanPayment** | `LoanPayment` | `amount = principal_component + interest_component`; in the loan's currency; `principal_component ≤ outstanding` at payment time; reduces outstanding; raises `LoanBalanceChanged` |
 | **Portfolio** | `Portfolio` (contains `Holding`) | `quantity ≥ 0`; market value = `quantity × last_price` |
-| **FinancialGoal** | `FinancialGoal` (contains `GoalContribution`) | `current_amount = Σ contributions` (in goal currency); `progress_pct = min(100, current_amount / target_amount × 100)`; `required_monthly = max(0, (target_amount − current_amount) / months_until(target_date))` (in goal currency; `months_until` rounds up to the next full month, ≥ 1); `on_track ⟺ projected_completion_date ≤ target_date` where `projected_completion_date` extrapolates from the last 90 days of contribution rate; status transitions valid |
+| **FinancialGoal** | `FinancialGoal` (contains `GoalContribution`) | `current_amount = Σ contributions` (in goal currency); `progress_pct = min(100, current_amount / target_amount × 100)`; `required_monthly = max(0, (target_amount − current_amount) / months_until(target_date))` (in goal currency; `months_until` rounds up to the next full month, ≥ 1); `projected_completion_date` extrapolates the **last 90 days** of contribution rate; `on_track ⟺ projected_completion_date ≤ target_date`. **Cold start (decided):** with **no contributions** or **< 30 days** of history the trend is undefined → `projected_completion_date = null` and `on_track = false` until a rate exists (we never assume the user will start paying `required_monthly`); **GoalStatus transitions** are constrained (enumerated in [§4](#4-enumerations)) |
 
 ## 3. Value objects
 
@@ -225,9 +225,10 @@ erDiagram
 | **Money** | `{ amount: decimal, currency: string }` | `decimal`/`numeric(19,4)`; currency = ISO-4217; **arithmetic only within the same currency** — cross-currency requires an explicit `Convert(rate)` |
 | **ExchangeRate** | `{ base, quote, rate: decimal, asOf }` | `rate > 0`, `numeric(19,8)`; **convention: `rate = quote_per_base`** (e.g. `{base:EUR, quote:USD, rate:1.087}` ⇒ *1 EUR = 1.087 USD*). Conversions: `Convert(m_quote → base) = m.amount / rate`; `Convert(m_base → quote) = m.amount × rate`. |
 | **CurrencyCode** | `string` (ISO-4217) | Validated 3-letter code; uppercased |
-| **Percentage** | `decimal` (0–100) | APRs, progress |
+| **Rate** | `decimal` fraction | Interest rates (APR): `0.0599` = 5.99%; range `[0, 1)` typical; monthly rate = `apr / 12`. **Stored as a fraction, never as `0–100`** |
+| **Percentage** | `decimal` (0–100) | **Display/derived ratios only** — goal `progress_pct`, asset allocation %, payoff %. **Not** used for APR (that is a `Rate`) |
 | **DateRange** | `{ start, end }` | `end > start` |
-| **Ticker** | `string` | Uppercased, validated format (Phase 0: free-form symbol) |
+| **Ticker** | `string` | **Normalized = uppercase + trim**, validated format (Phase 0: free-form symbol); **deduped within a portfolio** (one holding per normalized ticker) |
 
 > The `Money` type **refuses to add two different currencies** — a compile/runtime guard against the classic
 > "added dollars to euros" bug. All cross-currency math goes through an explicit conversion with a dated rate.
@@ -245,6 +246,12 @@ PaymentType   = SCHEDULED | PARTIAL_PREPAYMENT | FULL_PAYOFF | EXTRA
               (SCHEDULED = a planned installment · PARTIAL_PREPAYMENT = early partial · FULL_PAYOFF = early full payoff · EXTRA = ad-hoc extra)
 GoalType      = EMERGENCY_FUND | SAVINGS | PURCHASE | DEBT_PAYOFF | RETIREMENT | CUSTOM
 GoalStatus    = ACTIVE | ON_TRACK | AT_RISK | ACHIEVED | ABANDONED
+              Valid transitions:
+                ACTIVE        → ON_TRACK | AT_RISK     (set by the projection once a rate exists)
+                ON_TRACK      ↔ AT_RISK                (projection flips as the trend crosses the target date)
+                any           → ACHIEVED               (current_amount ≥ target_amount)
+                any           → ABANDONED              (user action)
+              (ACHIEVED/ABANDONED are terminal)
 PriceSource   = MANUAL | SEED            (no live market feed in Phase 0)
 ValuationSrc  = MANUAL | SEED
 FxRateSource  = MANUAL | SEED            (no live FX feed in Phase 0)
@@ -269,6 +276,10 @@ exactly like manual stock prices.
 **Conversion rules**
 - An amount in currency `C` converts to base via the rate effective **as of the snapshot date** (`fxRate(C→base, as_of)`).
 - `base → base = 1.0` always; no rate row needed.
+- **Triangulation.** A cross-rate between two **non-base** currencies `A → B` is **derived through the base**
+  (`A → base → B`) rather than requiring a directly-entered `A→B` pair — so the user only maintains rates against the
+  household base. A **directly-entered** `A→B` pair, if present, **wins** over the derived one. (Surfaced via
+  [`GET /v1/fx-rates/cross`](./04-api-design.md#2-resource-map), which flags the result as derived.)
 - The snapshot stores **both** the native `amount` (+ `currency`) **and** the `fx_rate_to_base` used **and** the
   resulting `amount_in_base` — so historical net worth is reproducible even if rates are later corrected (audit trail).
 - If a required rate is **missing** for a date, aggregation flags the entity as `unconverted` rather than silently
@@ -299,6 +310,11 @@ A `PaymentSchedule` is the planned amortization for a loan — an ordered list o
 - A schedule is **immutable once issued**. A prepayment that changes the future (see §6.3) produces a **new
   `version`** with recomputed remaining installments; prior versions are retained for audit.
 - The schedule is in the **loan's native currency** (multi-currency, [§5](#5-multi-currency-model)).
+
+> **Owner of `SCHEDULED → DUE`.** An installment is born `SCHEDULED`. A **scheduled daily job** — the
+> Insights/monitoring hosted service ([05](./05-monitoring.md)) — flips it to `DUE` when its `due_date` falls within the
+> reminder window and it is still unpaid. No client request drives this transition; payment-driven transitions
+> (`DUE/SCHEDULED → PAID | PARTIALLY_PAID`, `→ CANCELLED` on full payoff) are owned by the payment flow (§6.2/§6.4).
 
 ### 6.2 Recording a payment (regular, partial, full)
 
@@ -363,6 +379,10 @@ Rather than full event sourcing, Phase 0 uses a **lightweight append-only valuat
 - **Net worth at any date `D`** (in base currency) = for each subject, take its latest snapshot with `as_of ≤ D`, use
   its `amount_in_base`, sign it (asset `+`, liability `−`), sum.
 - This powers: net-worth trend chart, goal progress trend, and the financial-health monitoring in [05](./05-monitoring.md).
+- The derived read models (net worth, dashboard) are **eventually-consistent projections** rebuilt from these
+  snapshots by an **idempotent / replayable** reconcile-and-rebuild job, with **drift monitoring** so a projection that
+  diverges from the snapshot truth is detected and rebuilt (recompute-lag SLO and "updating…" client state in
+  [04](./04-api-design.md#3-sample-payloads); see [05](./05-monitoring.md) / [10](./10-dashboard-analytics.md)).
 
 ```sql
 -- Net worth (in household base currency) as of a given date — conceptual
@@ -411,7 +431,7 @@ All events flow through the **transactional outbox** (see [01 §5](./01-architec
 | `exchange_rate.rate`, `valuation_snapshot.fx_rate_to_base` | `numeric(19,8)` | FX rates need more precision than money |
 | `valuation_snapshot.amount_in_base` | `numeric(19,4)` | native `amount × fx_rate_to_base`, computed at write time |
 | `household.base_currency` | `char(3)` | ISO-4217; the household reporting currency |
-| `interest_rate_apr` | `numeric(6,4)` | e.g. `0.0599` = 5.99% (store as rate or %; pick one and document) |
+| `interest_rate_apr` | `numeric(9,6)` | **Decimal fraction** (decided): `0.059900` = 5.99% APR; monthly rate = `apr / 12`. Modelled as the `Rate` value object (§3), never as a `0–100` percentage |
 | `loan_payment.{amount,principal_component,interest_component,balance_after}` | `numeric(19,4)` | `amount = principal + interest`; in the loan's currency |
 | `scheduled_installment.{total_due,principal_due,interest_due,projected_balance_after,paid_amount}` | `numeric(19,4)` | `total_due = principal_due + interest_due` |
 | `payment_schedule.version` | `int` | re-amortization issues a new version; prior versions retained |

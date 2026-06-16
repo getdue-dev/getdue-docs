@@ -2,7 +2,7 @@
 
 A microservices platform has **many things that version independently** — APIs, services, contracts, events,
 databases, infra. This document is the **single authoritative versioning standard** for all of GetDue. It unifies the
-rules already referenced in [04 · API Design](../phase-0/04-api-design.md), [08 · Repositories & Contracts](./01-repositories.md),
+rules already referenced in [04 · API Design](../phase-0/04-api-design.md), [01 · Repositories & Contracts](./01-repositories.md),
 and [09 · Security Standard](../phase-0/09-security-standard.md).
 
 ## 0. Principles
@@ -20,7 +20,7 @@ and [09 · Security Standard](../phase-0/09-security-standard.md).
 |---|---|---|---|
 | **Public API** | URL major `/v1` + deprecation headers | gateway + each service | this doc §2 |
 | **Service / release** | SemVer git tag → container image tag | each service repo | §3 |
-| **Contracts (DTOs/OpenAPI)** | SemVer package | `getdue-contracts` | §4 + [08 §3](./01-repositories.md#3-the-contracts-repo-getdue-contracts) |
+| **Contracts (DTOs/OpenAPI)** | SemVer package | `getdue-contracts` | §4 + [01 §3](./01-repositories.md#3-the-contracts-repo-getdue-contracts) |
 | **Integration events** | `schemaVersion` + SemVer package | `getdue-contracts` | §5 |
 | **Shared library** | SemVer NuGet | `getdue-buildingblocks` | §6 |
 | **Database schema** | ordered migrations (expand/contract) | each service repo | §7 |
@@ -59,7 +59,7 @@ container image   registry/getdue-accounts:2.4.1
 ```
 
 - **Tag = source of truth.** CI builds, tests, scans, **signs (cosign)**, and attaches an **SBOM + SLSA provenance**
-  to the image ([09 §8](./04-secure-sdlc.md#2-secure-sdlc--supply-chain)). The same immutable image is promoted
+  to the image ([04 §2](./04-secure-sdlc.md#2-secure-sdlc--supply-chain)). The same immutable image is promoted
   staging → production — **never rebuilt per environment**.
 - **No `latest` in production.** Deployments pin an exact version; admission control rejects unsigned/untagged images.
 - A service's **API major** and its **release version** are decoupled: `accounts` can go `2.x → 3.x` internally while
@@ -70,7 +70,7 @@ container image   registry/getdue-accounts:2.4.1
 ## 4. Contract (DTO / OpenAPI) versioning
 
 The `getdue-contracts` package is **SemVer**, and is the coupling point between services and clients
-([08 §3](./01-repositories.md#3-the-contracts-repo-getdue-contracts)):
+([01 §3](./01-repositories.md#3-the-contracts-repo-getdue-contracts)):
 
 - **MINOR** = additive (new optional field/endpoint/enum) → consumers upgrade at will, nothing breaks.
 - **MAJOR** = breaking → requires an ADR, a new API major (§2), and a migration window.
@@ -99,7 +99,7 @@ versions — no floating ranges.
 ## 7. Database schema versioning (zero-downtime)
 
 Each service owns its DB and its **ordered EF Core migrations** (timestamped, committed, CI-gated). Because services
-run **2–3 pods** with **rolling deploys**, old and new code run **simultaneously** during a rollout — so every schema
+run **≥2 pods** (autoscaling) with **rolling deploys**, old and new code run **simultaneously** during a rollout — so every schema
 change is **backward-compatible across one release** via **expand → migrate → contract**:
 
 | Phase | Action | Compatible with |

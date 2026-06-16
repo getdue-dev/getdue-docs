@@ -73,7 +73,9 @@ Liabilities  = Loan Debt outstanding balances
 
 To keep Phase 0 honest, the codebase enforces these invariants:
 
-- **No outbound calls** to financial-institution APIs exist in the build (lint/architecture test fails if added).
+- **No outbound calls to financial-institution / market-data / FX APIs** exist in the build (lint/architecture test
+  fails if added). This targets *financial feeds only* — operational egress (transactional email, push, breached-password
+  check) is explicitly allow-listed ([09 SEC-NET-06](./09-security-standard.md#5-service-to-service--network-security-zero-trust)).
 - **No payment/transfer endpoints** are exposed — money never moves.
 - **All valuations and FX rates are user-sourced** — stored with `source = MANUAL` (or `SEED` for demo data); no
   live market or FX feed is called.

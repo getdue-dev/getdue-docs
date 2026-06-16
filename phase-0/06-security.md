@@ -21,11 +21,19 @@ real bank's data, minus the regulated payment/KYC obligations."
 | Telemetry | PII/money leakage | Hashed identifiers, no amounts in logs (see [05 §9](./05-monitoring.md#9-data-privacy-in-telemetry)) |
 | Supply chain | Compromised dependency | Pinned versions, SBOM, automated dependency updates, signed images |
 
+This platform-level table is **abridged**; a **per-service threat model** (from a shared template/stub) is maintained
+for each service and reviewed when its trust boundary changes — see
+[engineering/04 SDLC-05](../engineering/04-secure-sdlc.md#2-secure-sdlc--supply-chain).
+
 ## 2. Authentication
 
-- **ASP.NET Core Identity** for user store; **Argon2id** (or PBKDF2 at high iterations) for password hashing.
+- **ASP.NET Core Identity** for user store; **Argon2id** (or PBKDF2 at high iterations) for password hashing. Argon2id
+  uses the OWASP-minimum parameters **m=19456 KiB (19 MiB), t=2, p=1**, tuned upward as hardware allows.
 - **JWT access token** (~15 min) + **rotating refresh token** (HTTP-only cookie, ~30 days, revocable in Redis).
-- **MFA (TOTP or WebAuthn)** — available on every account; **on by default for account owners** (release-blocking per [09 SEC-AUTH-04](./09-security-standard.md#3-authentication--session-security-per-service)).
+- **Logout & token revocation:** logout **revokes the refresh token immediately** in Redis; the **stateless access JWT
+  (≤15 min) stays valid until its `exp`**. For sensitive/critical operations a **Redis `jti` deny-list** gives
+  **immediate** access-token revocation (see [09 SEC-AUTH-07](./09-security-standard.md#3-authentication--session-security-per-service)).
+- **MFA (TOTP or WebAuthn)** — available on every account; **on by default for ALL users (OWNER and MEMBER)** (release-blocking per [09 SEC-AUTH-04](./09-security-standard.md#3-authentication--session-security-per-service)).
 - Email verification required to reach `ACTIVE` status.
 - Lockout + exponential backoff on repeated failures.
 
@@ -54,9 +62,12 @@ real bank's data, minus the regulated payment/KYC obligations."
 
 - Input validation everywhere (FluentValidation + Zod mirror on web); reject unknown fields on writes.
 - Output encoding; CSP, X-Content-Type-Options, Referrer-Policy headers on web.
+- A **WAF at the edge is mandatory** regardless of provider (Cloudflare / Azure Front Door / CloudFront) — not optional ([09 SEC-NET-03](./09-security-standard.md#5-service-to-service--network-security-zero-trust)).
 - Rate limiting (per-user + per-IP) via ASP.NET Core rate limiter, counters in Redis.
 - Idempotency keys on creates to prevent duplicate entities.
-- Audit log of security-relevant events (login, role change, data export, deletion).
+- Audit log of security-relevant events (login, role change, data export, deletion). **Audit-class logs go to WORM
+  storage (object-lock blob/S3) or a SIEM, retained ≥1 year — not Loki** (Loki carries ops logs only); see
+  [09 SEC-LOG-03](./09-security-standard.md#9-logging-audit--detection).
 - OWASP ASVS L1 as the checklist; OWASP Top 10 reviewed per release.
 
 ## 6. Privacy & data rights
@@ -73,10 +84,10 @@ Even pre-regulation, design for **GDPR-style** rights from day one:
 The build-and-ship security pipeline — secret scanning, SAST, dependency/SCA review, IaC and container scanning,
 SBOM, image signing, DAST — is an **engineering-process** concern and is specified in
 **[engineering/04 · Secure SDLC](../engineering/04-secure-sdlc.md)**. The repo workflow itself is plain GitHub Flow on
-private repos + a protected `main` ([engineering/01 §7](../engineering/01-repositories.md#7-branch-protection-all-repos)).
+public repos + a protected `main` ([engineering/01 §7](../engineering/01-repositories.md#7-branch-protection-all-repos)).
 
-At **runtime** the app keeps least-privilege managed identities, a WAF at the edge, anomaly alerts, and an audit log
-(§3–§5, [05 · Monitoring](./05-monitoring.md)).
+At **runtime** the app keeps least-privilege managed identities, a **mandatory WAF at the edge** (regardless of provider),
+anomaly alerts, and an audit log (§3–§5, [05 · Monitoring](./05-monitoring.md)).
 
 ## 8. Compliance posture (Phase 0)
 

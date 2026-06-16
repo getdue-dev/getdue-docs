@@ -5,7 +5,7 @@
 > self-contained: the user manually records their financial reality (accounts, debts, property, mortgages,
 > stocks, goals) and the platform aggregates, tracks, and monitors it.
 
-> **Ownership model (Phase 0).** Solo-maintained. All repos live in the **private** GitHub org `get-due-dev`, and
+> **Ownership model (Phase 0).** Solo-maintained. All repos live in the **public** GitHub org `getdue-dev`, and
 > `main` is protected — plain **GitHub Flow** (feature branch → PR → green CI → merge; no direct pushes, no
 > force-push). Engineering process, tooling, and the CI security pipeline live in the
 > **[engineering handbook](../engineering/README.md)**, separate from these product docs.
@@ -48,6 +48,7 @@
 | 05 | [Monitoring System](./05-monitoring.md) | Observability, financial-health monitoring, alerting |
 | 06 | [Security & Compliance](./06-security.md) | AuthN/Z, data protection, posture for Phase 0 (design narrative) |
 | 07 | [Roadmap & Phasing](./07-roadmap.md) | Phase 0 milestones and what unlocks Phase 1 |
+| 08 | [Cost & FinOps](./08-cost-finops.md) | Per-environment cost model, cost-by-scale, dev cost-saving mode |
 | 09 | [Security Standard](./09-security-standard.md) | **Enforceable application/runtime security rules every service must meet** |
 | 10 | [Client Dashboard & Analytics](./10-dashboard-analytics.md) | Money analytics, net worth, allocation, debt & goal KPIs |
 
@@ -56,7 +57,7 @@
 
 ## Tech stack at a glance
 
-- **Backend:** C# / **.NET 10**, **stateless microservices** (2–3 pods each), ASP.NET Core, Clean Architecture + DDD, EF Core.
+- **Backend:** C# / **.NET 10**, **stateless microservices** (≥2 pods each, autoscaling), ASP.NET Core, Clean Architecture + DDD, EF Core.
 - **Orchestration:** **Kubernetes** (AKS) · **RabbitMQ** event bus · YARP API gateway.
 - **Database:** PostgreSQL 16 **(database-per-service)** (+ Redis for cache/refresh-tokens, never pod-local).
 - **Web client:** Next.js 15 (App Router) + TypeScript + React.
